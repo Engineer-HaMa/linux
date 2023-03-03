@@ -1,0 +1,325 @@
+// SPDX-License-Identifier: GPL-2.0
+
+use zerocopy_derive::{
+    FromBytes,
+    Immutable,
+    IntoBytes,
+};
+
+// TODO: Move this to another module.
+// TODO: Implement this properly for be archs. (At the moment conversion is no-op.)
+#[derive(Default, Clone, Copy, FromBytes, IntoBytes, Immutable)]
+#[repr(transparent)]
+#[allow(non_camel_case_types)]
+pub(crate) struct le<T>(T);
+
+impl<T> le<T> {
+    pub(crate) fn into(self) -> T {
+        self.0
+    }
+}
+
+impl<T> From<T> for le<T> {
+    fn from(value: T) -> Self {
+        Self(value)
+    }
+}
+
+#[allow(non_camel_case_types)]
+pub(crate) enum NvmeAdminOpcode {
+    delete_sq = 0x00,
+    create_sq = 0x01,
+    get_log_page = 0x02,
+    delete_cq = 0x04,
+    create_cq = 0x05,
+    identify = 0x06,
+    abort_cmd = 0x08,
+    set_features = 0x09,
+    get_features = 0x0a,
+    async_event = 0x0c,
+    activate_fw = 0x10,
+    download_fw = 0x11,
+    dbbuf = 0x7c,
+    format_nvm = 0x80,
+    security_send = 0x81,
+    security_recv = 0x82,
+}
+
+#[allow(non_camel_case_types)]
+pub(crate) enum NvmeOpcode {
+    flush = 0x00,
+    write = 0x01,
+    read = 0x02,
+    write_uncor = 0x04,
+    compare = 0x05,
+    dsm = 0x09,
+}
+
+pub(crate) const NVME_QUEUE_PHYS_CONTIG: u16 = 1 << 0;
+pub(crate) const NVME_CQ_IRQ_ENABLED: u16 = 1 << 1;
+pub(crate) const NVME_SQ_PRIO_URGENT: u16 = 0 << 1;
+pub(crate) const NVME_SQ_PRIO_HIGH: u16 = 1 << 1;
+pub(crate) const NVME_SQ_PRIO_MEDIUM: u16 = 2 << 1;
+pub(crate) const NVME_SQ_PRIO_LOW: u16 = 3 << 1;
+
+pub(crate) const NVME_FEAT_ARBITRATION: u32 = 0x01;
+pub(crate) const NVME_FEAT_POWER_MGMT: u32 = 0x02;
+pub(crate) const NVME_FEAT_LBA_RANGE: u32 = 0x03;
+pub(crate) const NVME_FEAT_TEMP_THRESH: u32 = 0x04;
+pub(crate) const NVME_FEAT_ERR_RECOVERY: u32 = 0x05;
+pub(crate) const NVME_FEAT_VOLATILE_WC: u32 = 0x06;
+pub(crate) const NVME_FEAT_NUM_QUEUES: u32 = 0x07;
+pub(crate) const NVME_FEAT_IRQ_COALESCE: u32 = 0x08;
+pub(crate) const NVME_FEAT_IRQ_CONFIG: u32 = 0x09;
+pub(crate) const NVME_FEAT_WRITE_ATOMIC: u32 = 0x0a;
+pub(crate) const NVME_FEAT_ASYNC_EVENT: u32 = 0x0b;
+pub(crate) const NVME_FEAT_SW_PROGRESS: u32 = 0x0c;
+
+#[derive(Default, Clone, Copy, FromBytes, IntoBytes, Immutable)]
+#[repr(C, packed)]
+pub(crate) struct NvmeCompletion {
+    pub(crate) result: le<u32>,
+    reserved: u32,
+    pub(crate) sq_head: le<u16>,
+    pub(crate) sq_id: le<u16>,
+    pub(crate) command_id: u16,
+    pub(crate) status: le<u16>,
+}
+
+#[derive(Default, Clone, Copy, FromBytes, IntoBytes, Immutable)]
+#[repr(C, packed)]
+pub(crate) struct NvmeCreateCq {
+    pub(crate) opcode: u8,
+    pub(crate) flags: u8,
+    pub(crate) command_id: u16,
+    pub(crate) rsvd1: [u32; 5],
+    pub(crate) prp1: le<u64>,
+    pub(crate) rsvd8: u64,
+    pub(crate) cqid: le<u16>,
+    pub(crate) qsize: le<u16>,
+    pub(crate) cq_flags: le<u16>,
+    pub(crate) irq_vector: le<u16>,
+    pub(crate) rsvd12: [u32; 4],
+}
+
+#[derive(Default, Clone, Copy, FromBytes, IntoBytes, Immutable)]
+#[repr(C, packed)]
+pub(crate) struct NvmeCreateSq {
+    pub(crate) opcode: u8,
+    pub(crate) flags: u8,
+    pub(crate) command_id: u16,
+    pub(crate) rsvd1: [u32; 5],
+    pub(crate) prp1: le<u64>,
+    pub(crate) rsvd8: u64,
+    pub(crate) sqid: le<u16>,
+    pub(crate) qsize: le<u16>,
+    pub(crate) sq_flags: le<u16>,
+    pub(crate) cqid: le<u16>,
+    pub(crate) rsvd12: [u32; 4],
+}
+
+#[derive(Default, Clone, Copy, FromBytes, IntoBytes, Immutable)]
+#[repr(C, packed)]
+pub(crate) struct NvmeIdentify {
+    pub(crate) opcode: u8,
+    pub(crate) flags: u8,
+    pub(crate) command_id: u16,
+    pub(crate) nsid: le<u32>,
+    pub(crate) reserved1: [u64; 2],
+    pub(crate) prp1: le<u64>,
+    pub(crate) prp2: le<u64>,
+    pub(crate) cns: le<u32>,
+    pub(crate) reserved2: [u32; 5],
+}
+
+#[derive(Default, Clone, Copy, FromBytes, IntoBytes, Immutable)]
+#[repr(C, packed)]
+pub(crate) struct NvmeFeatures {
+    pub(crate) opcode: u8,
+    pub(crate) flags: u8,
+    pub(crate) command_id: u16,
+    pub(crate) nsid: le<u32>,
+    pub(crate) rsvd2: [u64; 2],
+    pub(crate) prp1: le<u64>,
+    pub(crate) prp2: le<u64>,
+    pub(crate) fid: le<u32>,
+    pub(crate) dword11: le<u32>,
+    pub(crate) rsvd12: [u32; 4],
+}
+
+#[derive(Default, Clone, Copy, FromBytes, IntoBytes, Immutable)]
+#[repr(C, packed)]
+pub(crate) struct NvmeLbaRangeType {
+    pub(crate) type_: u8,
+    pub(crate) attributes: u8,
+    rsvd2: [u8; 14],
+    pub(crate) slba: le<u64>,
+    pub(crate) nlb: le<u64>,
+    pub(crate) guid: [u8; 16],
+    rsvd48: [u8; 16],
+}
+pub(crate) const NVME_LBART_ATTRIB_TEMP: u8 = 1 << 0;
+pub(crate) const NVME_LBART_ATTRIB_HIDE: u8 = 1 << 1;
+
+#[repr(C, packed)]
+pub(crate) struct NvmeIdPowerState {
+    max_power: le<u16>, /* centiwatts */
+    rsvd2: u16,
+    entry_lat: le<u32>, /* microseconds */
+    exit_lat: le<u32>,  /* microseconds */
+    read_tput: u8,
+    read_lat: u8,
+    write_tput: u8,
+    write_lat: u8,
+    rsvd16: [u8; 16],
+}
+
+#[repr(C, packed)]
+pub(crate) struct NvmeIdCtrl {
+    pub(crate) vid: le<u16>,
+    pub(crate) ssvid: le<u16>,
+    pub(crate) sn: [u8; 20],
+    pub(crate) mn: [u8; 40],
+    pub(crate) fr: [u8; 8],
+    pub(crate) rab: u8,
+    pub(crate) ieee: [u8; 3],
+    pub(crate) mic: u8,
+    pub(crate) mdts: u8,
+    rsvd78: [u8; 178],
+    pub(crate) oacs: le<u16>,
+    pub(crate) acl: u8,
+    pub(crate) aerl: u8,
+    pub(crate) frmw: u8,
+    pub(crate) lpa: u8,
+    pub(crate) elpe: u8,
+    pub(crate) npss: u8,
+    rsvd264: [u8; 248],
+    pub(crate) sqes: u8,
+    pub(crate) cqes: u8,
+    pub(crate) rsvd514: [u8; 2],
+    pub(crate) nn: le<u32>,
+    pub(crate) oncs: le<u16>,
+    pub(crate) fuses: le<u16>,
+    pub(crate) fna: u8,
+    pub(crate) vwc: u8,
+    pub(crate) awun: le<u16>,
+    pub(crate) awupf: le<u16>,
+    rsvd530: [u8; 1518],
+    pub(crate) psd: [NvmeIdPowerState; 32],
+    pub(crate) vs: [u8; 1024],
+}
+
+#[repr(C, packed)]
+pub(crate) struct NvmeLbaf {
+    pub(crate) ms: le<u16>,
+    pub(crate) ds: u8,
+    pub(crate) rp: u8,
+}
+
+#[repr(C, packed)]
+pub(crate) struct NvmeIdNs {
+    pub(crate) nsze: le<u64>,
+    pub(crate) ncap: le<u64>,
+    pub(crate) nuse: le<u64>,
+    pub(crate) nsfeat: u8,
+    pub(crate) nlbaf: u8,
+    pub(crate) flbas: u8,
+    pub(crate) mc: u8,
+    pub(crate) dpc: u8,
+    pub(crate) dps: u8,
+    rsvd30: [u8; 98],
+    pub(crate) lbaf: [NvmeLbaf; 16],
+    rsvd192: [u8; 192],
+    pub(crate) vs: [u8; 3712],
+}
+
+#[derive(Default, Clone, Copy, FromBytes, IntoBytes, Immutable)]
+#[repr(C, packed)]
+pub(crate) struct NvmeRw {
+    pub(crate) opcode: u8,
+    pub(crate) flags: u8,
+    pub(crate) command_id: u16,
+    pub(crate) nsid: le<u32>,
+    pub(crate) rsvd2: u64,
+    pub(crate) metadata: le<u64>,
+    pub(crate) prp1: le<u64>,
+    pub(crate) prp2: le<u64>,
+    pub(crate) slba: le<u64>,
+    pub(crate) length: le<u16>,
+    pub(crate) control: le<u16>,
+    pub(crate) dsmgmt: le<u32>,
+    pub(crate) reftag: le<u32>,
+    pub(crate) apptag: le<u16>,
+    pub(crate) appmask: le<u16>,
+}
+
+#[derive(Default, Clone, Copy, FromBytes, IntoBytes, Immutable)]
+#[repr(C, packed)]
+pub(crate) struct NvmeCommon {
+    pub(crate) opcode: u8,
+    pub(crate) flags: u8,
+    pub(crate) command_id: u16,
+    pub(crate) nsid: le<u32>,
+    pub(crate) cdw2: [u32; 2],
+    pub(crate) metadta: le<u64>,
+    pub(crate) prp1: le<u64>,
+    pub(crate) prp2: le<u64>,
+    pub(crate) cdw10: [u32; 6],
+}
+
+/// A 64-byte NVMe submission queue entry. A specific command is built by
+/// `transmute!`-ing its typed struct (`NvmeRw`, `NvmeIdentify`, ...) into the
+/// embedded [`NvmeCommon`]; shared-header fields are read/written through `.0`.
+#[derive(Default, Clone, Copy, FromBytes, IntoBytes, Immutable)]
+#[repr(transparent)]
+pub(crate) struct NvmeCommand(pub(crate) NvmeCommon);
+
+impl NvmeCommand {
+    pub(crate) fn new_flush(nsid: u32) -> Self {
+        Self(NvmeCommon {
+            opcode: NvmeOpcode::flush as u8,
+            nsid: nsid.into(),
+            ..NvmeCommon::default()
+        })
+    }
+}
+
+// NVMe controller registers are little-endian (NVMe spec). Accesses go through
+// the `Io` MMIO path (readl/readq), which converts between little-endian and CPU
+// endianness, so no explicit byte-swapping is needed here.
+kernel::register! {
+    /// Controller Capabilities (CAP).
+    pub(crate) CAP(u64) @ 0x00 {
+        15:0    mqes;   // Maximum Queue Entries Supported (0-based).
+        35:32   dstrd;  // Doorbell Stride.
+        51:48   mpsmin; // Memory Page Size Minimum.
+    }
+
+    /// Controller Configuration (CC).
+    pub(crate) CC(u32) @ 0x14 {
+        0:0     enable => bool;
+        6:4     css;    // I/O Command Set Selected.
+        10:7    mps;    // Memory Page Size.
+        13:11   ams;    // Arbitration Mechanism Selected.
+        15:14   shn;    // Shutdown Notification.
+        19:16   iosqes; // I/O Submission Queue Entry Size.
+        23:20   iocqes; // I/O Completion Queue Entry Size.
+    }
+
+    /// Controller Status (CSTS).
+    pub(crate) CSTS(u32) @ 0x1c {
+        0:0     rdy => bool;
+        1:1     cfs => bool;
+        3:2     shst;   // Shutdown Status.
+    }
+
+    /// Admin Queue Attributes (AQA).
+    pub(crate) AQA(u32) @ 0x24 {
+        11:0    asqs;   // Admin Submission Queue Size (0-based).
+        27:16   acqs;   // Admin Completion Queue Size (0-based).
+    }
+}
+
+// TODO Prefix constants with something.
+pub(crate) const OFFSET_ASQ: usize = 0x28;
+pub(crate) const OFFSET_ACQ: usize = 0x30;
