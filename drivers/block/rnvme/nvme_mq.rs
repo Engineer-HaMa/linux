@@ -1,0 +1,380 @@
+use core::sync::atomic::{
+    AtomicU16,
+    AtomicU32,
+    AtomicU64,
+    Ordering,
+};
+
+use kernel::{
+    alloc::{
+        flags,
+        KBox,
+    },
+    bindings,
+    block::mq,
+    error::code::*,
+    pr_info,
+    prelude::*,
+    sync::{
+        aref::ARef,
+        Arc,
+        ArcBorrow,
+    },
+    types::{
+        AtomicOptionalBoxedPtr,
+        ForeignOwnable,
+        OwnableRefCounted,
+        Owned,
+    },
+};
+use nvme_prp::*;
+
+use super::{
+    nvme_defs::*,
+    nvme_driver_defs::*,
+    nvme_queue::NvmeQueue,
+    MappingData,
+    NvmeCommand,
+    NvmeData,
+    NvmeNamespace,
+    NvmeRequest,
+};
+use crate::SyncUnsafeCell;
+
+mod nvme_prp;
+
+pub(crate) struct AdminQueueOperations;
+
+#[kernel::macros::vtable]
+impl mq::Operations for AdminQueueOperations {
+    type RequestData = NvmeRequest;
+    type QueueData = KBox<NvmeNamespace>;
+    type HwData = Arc<NvmeQueue<Self>>;
+    type TagSetData = Arc<NvmeData>;
+
+    fn new_request_data(
+        tagset_data: <Self::TagSetData as ForeignOwnable>::Borrowed<'_>,
+    ) -> impl PinInit<Self::RequestData> {
+        let device = tagset_data.pci_dev.as_ref().into();
+        let dma_pool = tagset_data.dma_pool.clone();
+        pin_init!(NvmeRequest {
+            dma_addr: AtomicU64::new(!0),
+            result: AtomicU32::new(0),
+            status: AtomicU16::new(0),
+            direction: AtomicU32::new(bindings::dma_data_direction_DMA_FROM_DEVICE as u32),
+            len: AtomicU32::new(0),
+            dev: device,
+            cmd: SyncUnsafeCell::new(NvmeCommand::default()),
+            sg_count: AtomicU32::new(0),
+            page_count: AtomicU32::new(0),
+            first_dma: AtomicU64::new(0),
+            mapping_data: AtomicOptionalBoxedPtr::new(None),
+            dma_pool: dma_pool,
+        })
+    }
+
+    fn queue_rq(
+        hw_data: <Self::HwData as ForeignOwnable>::Borrowed<'_>,
+        queue_data: <Self::QueueData as ForeignOwnable>::Borrowed<'_>,
+        rq: Owned<mq::IdleRequest<Self>>,
+        is_last: bool,
+    ) -> kernel::block::error::BlkResult {
+        let rq = rq.start();
+        queue_rq(hw_data, queue_data, rq, is_last)
+    }
+
+    fn complete(rq: ARef<mq::Request<Self>>) {
+        complete(rq)
+    }
+
+    fn commit_rqs(
+        queue: <Self::HwData as ForeignOwnable>::Borrowed<'_>,
+        _ns: <Self::QueueData as ForeignOwnable>::Borrowed<'_>,
+    ) {
+        queue.write_sq_db(true);
+    }
+
+    fn init_hctx(
+        tagset_data: <Self::TagSetData as ForeignOwnable>::Borrowed<'_>,
+        _hctx_idx: u32,
+    ) -> Result<Self::HwData> {
+        let queues = tagset_data.queues.lock();
+        Ok(queues.admin.as_ref().ok_or(EINVAL)?.clone())
+    }
+}
+
+pub(crate) struct IoQueueOperations;
+
+#[kernel::macros::vtable]
+impl mq::Operations for IoQueueOperations {
+    type RequestData = NvmeRequest;
+    type QueueData = KBox<NvmeNamespace>;
+    type HwData = Arc<NvmeQueue<Self>>;
+    type TagSetData = Arc<NvmeData>;
+
+    fn new_request_data(
+        tagset_data: <Self::TagSetData as ForeignOwnable>::Borrowed<'_>,
+    ) -> impl PinInit<Self::RequestData> {
+        let device = tagset_data.pci_dev.as_ref().into();
+        let dma_pool = tagset_data.dma_pool.clone();
+        pin_init!(NvmeRequest {
+            dma_addr: AtomicU64::new(!0),
+            result: AtomicU32::new(0),
+            status: AtomicU16::new(0),
+            direction: AtomicU32::new(bindings::dma_data_direction_DMA_FROM_DEVICE as u32),
+            len: AtomicU32::new(0),
+            dev: device,
+            cmd: SyncUnsafeCell::new(NvmeCommand::default()),
+            sg_count: AtomicU32::new(0),
+            page_count: AtomicU32::new(0),
+            first_dma: AtomicU64::new(0),
+            mapping_data: AtomicOptionalBoxedPtr::new(None),
+            dma_pool: dma_pool,
+        })
+    }
+
+    fn init_hctx(
+        tagset_data: ArcBorrow<'_, NvmeData>,
+        hctx_idx: u32,
+    ) -> Result<Arc<NvmeQueue<Self>>> {
+        let queues = tagset_data.queues.lock();
+        Ok(queues.io[hctx_idx as usize].clone())
+    }
+
+    fn queue_rq(
+        io_queue: ArcBorrow<'_, NvmeQueue<Self>>,
+        ns: &NvmeNamespace,
+        rq: Owned<mq::IdleRequest<Self>>,
+        is_last: bool,
+    ) -> kernel::block::error::BlkResult {
+        let rq = rq.start();
+        queue_rq(io_queue, ns, rq, is_last)
+    }
+
+    fn complete(rq: ARef<mq::Request<Self>>) {
+        complete(rq)
+    }
+
+    fn commit_rqs(io_queue: ArcBorrow<'_, NvmeQueue<Self>>, _ns: &NvmeNamespace) {
+        io_queue.write_sq_db(true);
+    }
+
+    fn poll(
+        queue: ArcBorrow<'_, NvmeQueue<Self>>,
+        _ns: &NvmeNamespace,
+        _batch: &mut mq::IoCompletionBatch<Self>,
+    ) -> Result<bool> {
+        Ok(queue.process_completions())
+    }
+
+    fn map_queues(tag_set: Pin<&mut mq::TagSet<Self>>) {
+        // TODO: Build abstractions for these unsafe calls
+        let tag_set = tag_set.into_ref().get_ref();
+        unsafe {
+            let device_data = <Self::TagSetData as ForeignOwnable>::borrow(
+                (*tag_set.raw_tag_set()).driver_data.cast(),
+            );
+            let num_maps = (*tag_set.raw_tag_set()).nr_maps;
+            pr_info!("num_maps: {}\n", num_maps);
+            let mut queue_offset: u32 = 0;
+            let mut irq_offset: u32 = 1; //TODO: Unless we only have 1 vector
+            for i in 0..num_maps {
+                let queue_count = match i {
+                    bindings::hctx_type_HCTX_TYPE_DEFAULT => device_data.irq_queue_count,
+                    bindings::hctx_type_HCTX_TYPE_POLL => device_data.poll_queue_count,
+                    _ => 0,
+                };
+                let map = &mut (&mut (*tag_set.raw_tag_set()).map)[i as usize];
+                map.nr_queues = queue_count;
+                if queue_count == 0 {
+                    continue;
+                }
+                map.queue_offset = queue_offset;
+                if i != bindings::hctx_type_HCTX_TYPE_POLL && irq_offset != 0 {
+                    bindings::blk_mq_map_hw_queues(
+                        map,
+                        device_data.pci_dev.as_ref().as_raw(),
+                        irq_offset,
+                    );
+                } else {
+                    bindings::blk_mq_map_queues(map);
+                }
+                queue_offset += queue_count;
+                irq_offset += queue_count;
+            }
+        }
+        pr_info!("Return from map queues");
+    }
+}
+
+fn queue_rq<T>(
+    io_queue: ArcBorrow<'_, NvmeQueue<T>>,
+    ns: &NvmeNamespace,
+    mut rq: Owned<mq::Request<T>>,
+    is_last: bool,
+) -> kernel::block::error::BlkResult
+where
+    T: mq::Operations<RequestData = NvmeRequest> + Send,
+{
+    match rq.command() {
+        kernel::block::mq::Command::DriverIn | kernel::block::mq::Command::DriverOut => {
+            io_queue.submit_command(unsafe { &*rq.data_ref().cmd.get() }, is_last);
+            Ok(())
+        }
+        kernel::block::mq::Command::Flush => {
+            let mut cmd = NvmeCommand::new_flush(ns.id);
+            cmd.common.command_id = rq.tag() as u16;
+            io_queue.submit_command(&cmd, is_last);
+            Ok(())
+        }
+        kernel::block::mq::Command::Write | kernel::block::mq::Command::Read => {
+            let (direction, opcode) = if rq.command() == kernel::block::mq::Command::Read {
+                (
+                    bindings::dma_data_direction_DMA_FROM_DEVICE as u32,
+                    NvmeOpcode::read,
+                )
+            } else {
+                (
+                    bindings::dma_data_direction_DMA_TO_DEVICE as u32,
+                    NvmeOpcode::write,
+                )
+            };
+            //pr_info!("Queueing tag: {}\n", rq.tag());
+            let len = rq.payload_bytes();
+            // TODO: Handle unwrap
+            let offset = rq.bio().unwrap().raw_iter().bi_sector;
+            let mut cmd = NvmeCommand {
+                rw: NvmeRw {
+                    opcode: opcode as _,
+                    command_id: rq.tag() as u16,
+                    nsid: ns.id.into(),
+                    slba: (offset >> (ns.lba_shift - bindings::SECTOR_SHIFT)).into(),
+                    length: ((len >> ns.lba_shift) as u16 - 1).into(),
+                    ..NvmeRw::default()
+                },
+            };
+
+            if rq.nr_phys_segments() == 1 {
+                let bio = rq.bio_iter_mut().next().unwrap();
+                let mut segment_iter = bio.segment_iter();
+                let segment = segment_iter.next().unwrap();
+                if (segment.offset() % NVME_CTRL_PAGE_SIZE) + len as usize
+                    <= NVME_CTRL_PAGE_SIZE * 2
+                {
+                    let dma_addr = unsafe {
+                        bindings::dma_map_page_attrs(
+                            io_queue.data.pci_dev.as_ref().as_raw(),
+                            segment.page(),
+                            segment.offset() as _,
+                            len as _,
+                            direction as i32,
+                            0,
+                        )
+                    };
+                    if dma_addr == !0 {
+                        return Err(kernel::block::error::code::BLK_STS_IOERR);
+                    }
+
+                    cmd.rw.prp1 = dma_addr.into();
+                    if len > (NVME_CTRL_PAGE_SIZE as u32) {
+                        cmd.rw.prp2 = (dma_addr + (NVME_CTRL_PAGE_SIZE as u64)).into();
+                    }
+
+                    let pdu = rq.data_ref();
+                    pdu.dma_addr.store(dma_addr, Ordering::Relaxed);
+                    pdu.direction.store(direction, Ordering::Relaxed);
+                    pdu.len.store(len, Ordering::Relaxed);
+
+                    drop(rq);
+                    io_queue.submit_command(&cmd, is_last);
+                    return Ok(());
+                }
+            }
+
+            let mut md = KBox::new(MappingData::default(), flags::GFP_ATOMIC)
+                .map_err(|_| kernel::block::error::code::BLK_STS_IOERR)?;
+            let count = rq
+                .map_sg(&mut md.sg)
+                .map_err(|_| kernel::block::error::code::BLK_STS_IOERR)?;
+            let dev = io_queue.data.pci_dev.as_ref();
+            dev.dma_map_sg(&mut md.sg[..count as usize], direction)
+                .map_err(|_| kernel::block::error::code::BLK_STS_IOERR)?;
+            let page_count = setup_prps(&io_queue.data, &mut cmd, &mut md, len)
+                .map_err(|_| kernel::block::error::code::BLK_STS_IOERR)?;
+
+            let pdu = rq.data_ref();
+            pdu.sg_count.store(count, Ordering::Relaxed);
+            pdu.page_count.store(page_count, Ordering::Relaxed);
+            pdu.first_dma
+                .store(unsafe { cmd.common.prp2.into() }, Ordering::Relaxed);
+            pdu.mapping_data.store(Some(md), Ordering::Relaxed);
+
+            drop(rq);
+            io_queue.submit_command(&cmd, is_last);
+            Ok(())
+        }
+
+        _ => Err(kernel::block::error::code::BLK_STS_IOERR),
+    }
+}
+
+fn complete<T>(rq: ARef<mq::Request<T>>)
+where
+    T: mq::Operations<RequestData = NvmeRequest> + Send,
+{
+    match rq.command() {
+        kernel::block::mq::Command::DriverIn
+        | kernel::block::mq::Command::DriverOut
+        | kernel::block::mq::Command::Flush => {
+            // We just complete right away if flush completes.
+            OwnableRefCounted::try_from_shared(rq)
+                .map_err(|_e| kernel::error::code::EIO)
+                .expect("Failed to get unique reference\n")
+                .end_ok();
+            return;
+        }
+        _ => {}
+    }
+
+    let pdu = rq.data_ref();
+
+    if let Some(mut md) = pdu.mapping_data.take(Ordering::Relaxed) {
+        pdu.dev.dma_unmap_sg(
+            &mut md.sg[..pdu.sg_count.load(Ordering::Relaxed) as usize],
+            pdu.direction.load(Ordering::Relaxed),
+        );
+        free_prps(
+            pdu.page_count.load(Ordering::Relaxed) as _,
+            &md.pages,
+            pdu.first_dma.load(Ordering::Relaxed),
+            &pdu.dma_pool,
+        );
+    } else {
+        // Unmap the page we mapped.
+        unsafe {
+            bindings::dma_unmap_page_attrs(
+                pdu.dev.as_raw(),
+                pdu.dma_addr.load(Ordering::Relaxed),
+                pdu.len.load(Ordering::Relaxed) as _,
+                pdu.direction.load(Ordering::Relaxed) as i32,
+                0,
+            )
+        };
+    }
+
+    // On failure, complete the request immediately with an error.
+    let status = pdu.status.load(Ordering::Relaxed);
+
+    let rq = OwnableRefCounted::try_from_shared(rq)
+        .map_err(|_e| kernel::error::code::EIO)
+        .expect("Failed to get unique reference\n");
+
+    if status != 0 {
+        pr_info!("Completing with error {:x}\n", status);
+        rq.end(bindings::BLK_STS_IOERR as u8);
+        return;
+    }
+
+    // TODO: Used to loop here.
+    rq.end_ok();
+}
