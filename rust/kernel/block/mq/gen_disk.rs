@@ -8,7 +8,7 @@
 
 use crate::{
     bindings,
-    block::mq::{Operations, RequestQueue, TagSet},
+    block::mq::{Operations, RequestQueueRef, TagSet},
     error::{self, from_err_ptr, Result},
     fmt::{self, Write},
     prelude::*,
@@ -267,8 +267,8 @@ impl<T: Operations> GenDisk<T> {
         unsafe { T::QueueData::borrow((*(*self.gendisk).queue).queuedata) }
     }
 
-    pub fn queue(&self) -> &RequestQueue<T> {
-        unsafe { RequestQueue::from_raw((*self.gendisk).queue) }
+    pub fn queue(&self) -> &RequestQueueRef<T> {
+        unsafe { RequestQueueRef::from_raw((*self.gendisk).queue) }
     }
 }
 
