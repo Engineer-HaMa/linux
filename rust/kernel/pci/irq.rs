@@ -172,6 +172,34 @@ impl Drop for IrqVectorRegistration {
 }
 
 impl Device<device::Bound> {
+    /// Returns an [`IrqRequest`] for the IRQ vector at the given index.
+    ///
+    /// The index must be within the range returned by [`Self::alloc_irq_vectors`].
+    fn irq_by_index(&self, index: u32) -> Result<IrqRequest<'_>> {
+        // SAFETY: `self.as_raw()` is a valid pointer to a `struct pci_dev`.
+        let irq = unsafe { bindings::pci_irq_vector(self.as_raw(), index) };
+        if irq < 0 {
+            return Err(crate::error::Error::from_errno(irq));
+        }
+        // SAFETY: `irq` is guaranteed to be a valid IRQ number for this device.
+        Ok(unsafe { IrqRequest::new(self.as_ref(), irq as u32) })
+    }
+
+    /// Returns a [`kernel::irq::Registration`] for the IRQ vector at the given index.
+    pub fn request_irq_by_index<'a, T: crate::irq::Handler + 'static>(
+        &'a self,
+        index: u32,
+        flags: irq::Flags,
+        name: &'static CStr,
+        handler: impl PinInit<T, Error> + 'a,
+    ) -> impl PinInit<irq::Registration<T>, Error> + 'a {
+        pin_init::pin_init_scope(move || {
+            let request = self.irq_by_index(index)?;
+
+            Ok(irq::Registration::<T>::new(request, flags, name, handler))
+        })
+    }
+
     /// Returns a [`kernel::irq::Registration`] for the given IRQ vector.
     pub fn request_irq<'a, T: crate::irq::Handler + 'static>(
         &'a self,
