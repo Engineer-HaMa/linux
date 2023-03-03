@@ -84,7 +84,6 @@ impl<T: Operations> TagSet<T> {
     }
 
     /// Return the pointer to the wrapped `struct blk_mq_tag_set`
-    // TODO: This should not be pub, but abstractions are not done yet
     pub fn raw_tag_set(&self) -> *mut bindings::blk_mq_tag_set {
         self.inner.get()
     }
@@ -102,6 +101,7 @@ impl<T: Operations> TagSet<T> {
         unsafe { &*(ptr.cast::<Self>()) }
     }
 
+    /// Returns a request reference for the given queue and tag.
     pub fn tag_to_rq(&self, qid: u32, tag: u32) -> Option<ARef<Request<T>>> {
         // TODO: We have to check that qid doesn't overflow hw queue.
         let tags = unsafe { *(*self.inner.get()).tags.add(qid as _) };
@@ -119,12 +119,12 @@ impl<T: Operations> TagSet<T> {
             // It is possible for an interrupt to arrive faster than the last
             // decrement to the refcount, so retry if the refcount is not what
             // we think it should be.
+            //
+            // SAFETY: `Atomic<i32>` is layout-compatible with `AtomicI32`.
+            let atomic =
+                unsafe { &*(refcount_ref.as_atomic() as *const _ as *const core::sync::atomic::AtomicI32) };
             while let Err(_) =
-                // Load acquire to sync with store release of URef being destroyed
-                // (prevent mutable access overlapping) this load.
-                // Store relaxed as no other operations need to happen strictly
-                // before or after the increment.
-                refcount_ref.as_atomic().fetch_update(
+                atomic.fetch_update(
                     Ordering::Relaxed,
                     Ordering::Acquire,
                     |x| {
