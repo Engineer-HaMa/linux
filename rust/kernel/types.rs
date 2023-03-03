@@ -9,7 +9,6 @@ use core::{
     marker::{PhantomData, PhantomPinned},
     mem::MaybeUninit,
     ops::{Deref, DerefMut},
-    ptr::NonNull,
     sync::atomic::{AtomicPtr, Ordering},
 };
 use pin_init::{PinInit, Wrapper, Zeroable};
