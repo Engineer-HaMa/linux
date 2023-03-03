@@ -2,17 +2,34 @@
 
 //! Kernel types.
 
-use crate::alloc::KBox;
-use crate::ffi::c_void;
-use crate::sync::atomic::{ordering, Atomic, Relaxed};
 use core::{
     cell::UnsafeCell,
-    marker::{PhantomData, PhantomPinned},
+    marker::{
+        PhantomData,
+        PhantomPinned,
+    },
     mem::MaybeUninit,
-    ops::{Deref, DerefMut},
-    ptr::NonNull,
+    ops::{
+        Deref,
+        DerefMut,
+    },
 };
-use pin_init::{PinInit, Wrapper, Zeroable};
+
+use pin_init::{
+    PinInit,
+    Wrapper,
+    Zeroable,
+};
+
+use crate::{
+    alloc::KBox,
+    ffi::c_void,
+    sync::atomic::{
+        ordering,
+        Atomic,
+        Relaxed,
+    },
+};
 
 #[doc(hidden)]
 pub mod for_lt;
@@ -471,7 +488,9 @@ pub const NotThreadSafe: NotThreadSafe = PhantomData;
 /// collection/
 pub trait BorrowIterator {
     /// The type of elements being iterated over.
-    type Item<'a> where Self: 'a;
+    type Item<'a>
+    where
+        Self: 'a;
 
     /// Advances the iterator and raturns the next value.
     ///
