@@ -133,6 +133,7 @@ pub use request::Flag as RequestFlag;
 pub use request::Flags as RequestFlags;
 pub use request::IdleRequest;
 pub use request::Request;
+pub use request::RequestQueue;
 pub use request::RequestTimerHandle;
 pub use request_list::RequestList;
 pub use request_queue::RequestQueue;
