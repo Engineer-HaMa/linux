@@ -4,14 +4,15 @@
 //!
 //! C header: [`include/linux/blk_types.h`](srctree/include/linux/blk_types.h)
 
-use crate::{
-    fmt,
-    types::Opaque, //
-};
 use core::{
     marker::PhantomData,
     pin::Pin,
     ptr::NonNull, //
+};
+
+use crate::{
+    fmt,
+    types::Opaque, //
 };
 
 mod vec;
@@ -65,8 +66,9 @@ impl Bio {
 
     /// Return a copy of the `bvec_iter` for this `Bio`. This iterator always
     /// indexes to a valid `bio_vec` entry.
+    // TODO: Should not be pub
     #[inline(always)]
-    fn raw_iter(&self) -> bindings::bvec_iter {
+    pub fn raw_iter(&self) -> bindings::bvec_iter {
         // SAFETY: By the type invariant of `Bio` and existence of `&self`,
         // `self` is valid for read.
         unsafe { (*self.0.get()).bi_iter }

@@ -150,8 +150,13 @@ pub use request::{
     RequestTimerHandle, //
 };
 pub use request_list::RequestList;
-pub use request_queue::RequestQueue;
+pub use request_queue::{
+    OwnedRequestQueue,
+    RequestQueue,
+    SyncRequest,
+};
 pub use tag_set::{
+    Flags,
     QueueType,
     TagSet, //
 };
