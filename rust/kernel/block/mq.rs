@@ -147,6 +147,7 @@ pub use request::{
     Flags as RequestFlags,
     IdleRequest,
     Request,
+    RequestQueue,
     RequestTimerHandle, //
 };
 pub use request_list::RequestList;
