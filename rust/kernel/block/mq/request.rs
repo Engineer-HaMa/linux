@@ -7,11 +7,15 @@
 
 use crate::{
     bindings,
-    block::mq::Operations,
+    block::{
+        bio::{Bio, BioIterator},
+        mq::{Operations, TagSet},
+    },
+    error::{from_err_ptr, Error, Result},
     sync::{
         aref::{ARef, RefCounted},
-        atomic::{ordering},
-        Refcount,
+        atomic::ordering,
+        Arc, Refcount,
     },
     time::hrtimer::{
         HasHrTimer, HrTimer, HrTimerCallback, HrTimerHandle, HrTimerMode, HrTimerPointer,
@@ -19,11 +23,6 @@ use crate::{
     types::{ForeignOwnable, Opaque, Ownable, OwnableRefCounted, Owned},
 };
 use core::{ffi::c_void, marker::PhantomData, ops::Deref, ptr::NonNull};
-
-use crate::block::bio::Bio;
-use crate::block::bio::BioIterator;
-
-use super::RequestQueue;
 
 #[repr(transparent)]
 pub struct IdleRequest<T>(RequestInner<T>);
@@ -101,6 +100,7 @@ impl<T: Operations> RequestInner<T> {
         unsafe { RequestQueue::from_raw((*self.0.get()).q) }
     }
 }
+
 
 /// A wrapper around a blk-mq [`struct request`]. This represents an IO request.
 ///
@@ -251,6 +251,44 @@ impl<T: Operations> Request<T> {
     /// Return a reference to the per-request data associated with this request.
     pub fn data_ref(&self) -> &T::RequestData {
         &self.wrapper_ref().data
+    }
+
+    /// Returns the tag associated with this request
+    pub fn tag(&self) -> i32 {
+        unsafe { (*self.0.get()).tag }
+    }
+
+    /// Returns the number of physical contiguous segments in the payload of this request
+    pub fn nr_phys_segments(&self) -> u16 {
+        unsafe { bindings::blk_rq_nr_phys_segments(self.0.get()) }
+    }
+
+    /// Returns the number of elements used.
+    pub fn map_sg(&self, sglist: &mut [bindings::scatterlist]) -> Result<u32> {
+        // TODO: Remove this check by encoding a max number of segments in the type.
+        if sglist.len() < self.nr_phys_segments().into() {
+            return Err(crate::error::code::EINVAL);
+        }
+
+        // Populate the scatter-gather list.
+        let mut last_sg = core::ptr::null_mut();
+        let count = unsafe {
+            bindings::__blk_rq_map_sg(
+                self.0.get(),
+                &mut sglist[0],
+                &mut last_sg,
+            )
+        };
+        if count < 0 {
+            Err(crate::error::code::ENOMEM)
+        } else {
+            Ok(count as _)
+        }
+    }
+
+    /// Returns the number of bytes in the payload of this request
+    pub fn payload_bytes(&self) -> u32 {
+        unsafe { bindings::blk_rq_payload_bytes(self.0.get()) }
     }
 }
 
@@ -555,5 +593,83 @@ where
         let context = unsafe { kernel::time::hrtimer::HrTimerCallbackContext::from_raw(timer_ptr) };
 
         T::RequestData::run(aref, context).into_c()
+    }
+}
+
+pub struct RequestQueue<T: Operations> {
+    ptr: *mut bindings::request_queue,
+    tagset: Arc<TagSet<T>>,
+}
+
+impl<T: Operations> RequestQueue<T> {
+    pub fn try_new(tagset: Arc<TagSet<T>>, queue_data: T::QueueData) -> Result<Self> {
+        let mq = from_err_ptr(unsafe {
+            bindings::blk_mq_alloc_queue(
+                tagset.raw_tag_set(),
+                core::ptr::null_mut(),
+                core::ptr::null_mut(),
+            )
+        })?;
+        unsafe { (*mq).queuedata = queue_data.into_foreign() as _ };
+        Ok(Self { ptr: mq, tagset })
+    }
+
+    pub fn alloc_sync_request(&self, op: u32) -> Result<SyncRequest<T>> {
+        let rq = from_err_ptr(unsafe { bindings::blk_mq_alloc_request(self.ptr, op, 0) })?;
+        // SAFETY: `rq` is valid and will be owned by new `SyncRequest`.
+        Ok(unsafe { SyncRequest::from_ptr(rq) })
+    }
+}
+
+impl<T: Operations> Drop for RequestQueue<T> {
+    fn drop(&mut self) {
+        // TODO: Free queue, unless it has been adopted by a disk, for example.
+    }
+}
+
+/// A synchronous request to be submitted to a queue.
+pub struct SyncRequest<T: Operations> {
+    ptr: *mut bindings::request,
+    _p: PhantomData<T>,
+}
+
+impl<T: Operations> SyncRequest<T> {
+    /// Creates a new synchronous request.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must be valid. and ownership is transferred to new `SyncRequest` object.
+    unsafe fn from_ptr(ptr: *mut bindings::request) -> Self {
+        Self {
+            ptr,
+            _p: PhantomData,
+        }
+    }
+
+    /// Submits the request for execution by the request queue to which it belongs.
+    pub fn execute(&self, at_head: bool) -> Result {
+        let status = unsafe { bindings::blk_execute_rq(self.ptr, at_head as _) };
+        let ret = unsafe { bindings::blk_status_to_errno(status) };
+        if ret < 0 {
+            Err(Error::from_errno(ret))
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Returns the tag associated with this synchronous request.
+    pub fn tag(&self) -> i32 {
+        unsafe { (*self.ptr).tag }
+    }
+
+    /// Returns the per-request data associated with this synchronous request.
+    pub fn data(&self) -> &T::RequestData {
+        unsafe { &*(bindings::blk_mq_rq_to_pdu(self.ptr) as *const T::RequestData) }
+    }
+}
+
+impl<T: Operations> Drop for SyncRequest<T> {
+    fn drop(&mut self) {
+        unsafe { bindings::blk_mq_free_request(self.ptr) };
     }
 }
