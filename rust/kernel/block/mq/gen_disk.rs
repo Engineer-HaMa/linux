@@ -29,6 +29,9 @@ pub struct GenDiskBuilder {
     physical_block_size: u32,
     capacity_sectors: u64,
     max_hw_discard_sectors: u32,
+    virt_boundary_mask: usize,
+    max_segments: u16,
+    max_hw_sectors: u32,
 }
 
 impl Default for GenDiskBuilder {
@@ -39,6 +42,9 @@ impl Default for GenDiskBuilder {
             physical_block_size: bindings::PAGE_SIZE as u32,
             capacity_sectors: 0,
             max_hw_discard_sectors: 0,
+            virt_boundary_mask: 0,
+            max_segments: 0,
+            max_hw_sectors: 0,
         }
     }
 }
@@ -109,6 +115,21 @@ impl GenDiskBuilder {
         self
     }
 
+    pub fn virt_boundary_mask(mut self, boundary_mask: usize) -> Self {
+        self.virt_boundary_mask = boundary_mask;
+        self
+    }
+
+    pub fn max_segments(mut self, segments: u16) -> Self {
+        self.max_segments = segments;
+        self
+    }
+
+    pub fn max_hw_sectors(mut self, sectors: u32) -> Self {
+        self.max_hw_sectors = sectors;
+        self
+    }
+
     /// Build a new `GenDisk` and add it to the VFS.
     pub fn build<T: Operations>(
         self,
@@ -128,6 +149,9 @@ impl GenDiskBuilder {
         lim.logical_block_size = self.logical_block_size;
         lim.physical_block_size = self.physical_block_size;
         lim.max_hw_discard_sectors = self.max_hw_discard_sectors;
+        lim.max_hw_sectors = self.max_hw_sectors;
+        lim.max_segments = self.max_segments;
+        lim.virt_boundary_mask = self.virt_boundary_mask;
         if self.rotational {
             lim.features = bindings::BLK_FEAT_ROTATIONAL;
         }
