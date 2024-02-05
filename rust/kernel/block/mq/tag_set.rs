@@ -4,6 +4,18 @@
 //!
 //! C header: [`include/linux/blk-mq.h`](srctree/include/linux/blk-mq.h)
 
+use core::{
+    convert::TryInto,
+    marker::PhantomData,
+    pin::Pin, //
+};
+
+use pin_init::{
+    pin_data,
+    pinned_drop,
+    PinInit, //
+};
+
 use crate::{
     alloc::NumaNode,
     block::mq::{
@@ -21,16 +33,6 @@ use crate::{
         ForeignOwnable,
         Opaque, //
     },
-};
-use core::{
-    convert::TryInto,
-    marker::PhantomData,
-    pin::Pin, //
-};
-use pin_init::{
-    pin_data,
-    pinned_drop,
-    PinInit, //
 };
 
 mod flags;
@@ -105,7 +107,8 @@ impl<T: Operations> TagSet<T> {
     }
 
     /// Return the pointer to the wrapped `struct blk_mq_tag_set`
-    pub(crate) fn raw_tag_set(&self) -> *mut bindings::blk_mq_tag_set {
+    // TODO: This should not be pub, but abstractions are not done yet
+    pub fn raw_tag_set(&self) -> *mut bindings::blk_mq_tag_set {
         self.inner.get()
     }
 
