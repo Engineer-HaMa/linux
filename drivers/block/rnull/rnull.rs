@@ -249,7 +249,7 @@ impl NullBlkDevice {
         }
 
         let tagset = Arc::pin_init(
-            TagSet::new(submit_queues, 256, 1, home_node, flags),
+            TagSet::new(submit_queues, (), 256, 1, home_node, flags),
             GFP_KERNEL,
         )?;
 
@@ -525,6 +525,7 @@ where
 impl Operations for NullBlkDevice {
     type QueueData = Pin<KBox<QueueData>>;
     type RequestData = Pdu;
+    type TagSetData = ();
 
     fn new_request_data() -> impl PinInit<Self::RequestData> {
         pin_init!(Pdu {
