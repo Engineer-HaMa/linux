@@ -50,7 +50,7 @@ pub struct GenDiskBuilder<T> {
     physical_block_size: u32,
     capacity_sectors: u64,
     max_hw_discard_sectors: u32,
-#[cfg(CONFIG_BLK_DEV_ZONED)]
+    #[cfg(CONFIG_BLK_DEV_ZONED)]
     zoned: bool,
     #[cfg(CONFIG_BLK_DEV_ZONED)]
     zone_size_sectors: u32,
@@ -73,7 +73,7 @@ impl<T> Default for GenDiskBuilder<T> {
             physical_block_size: bindings::PAGE_SIZE as u32,
             capacity_sectors: 0,
             max_hw_discard_sectors: 0,
-#[cfg(CONFIG_BLK_DEV_ZONED)]
+            #[cfg(CONFIG_BLK_DEV_ZONED)]
             zoned: false,
             #[cfg(CONFIG_BLK_DEV_ZONED)]
             zone_size_sectors: 0,
@@ -156,7 +156,7 @@ impl<T: Operations> GenDiskBuilder<T> {
         self
     }
 
-/// Mark this device as a zoned block device.
+    /// Mark this device as a zoned block device.
     #[cfg(CONFIG_BLK_DEV_ZONED)]
     pub fn zoned(mut self, enable: bool) -> Self {
         self.zoned = enable;
@@ -234,7 +234,7 @@ impl<T: Operations> GenDiskBuilder<T> {
         lim.logical_block_size = self.logical_block_size;
         lim.physical_block_size = self.physical_block_size;
         lim.max_hw_discard_sectors = self.max_hw_discard_sectors;
-lim.max_sectors = self.max_sectors;
+        lim.max_sectors = self.max_sectors;
         lim.max_hw_sectors = self.max_hw_sectors;
         lim.max_segments = self.max_segments;
         lim.virt_boundary_mask = self.virt_boundary_mask;
@@ -441,6 +441,39 @@ where
     T::QueueData: Sync,
     Arc<TagSet<T>>: Sync,
 {
+}
+
+impl<T: Operations> GenDisk<T> {
+    /// Call to tell the block layer the capacity of the device in sectors (512
+    /// bytes).
+    pub fn set_capacity_sectors(&self, sectors: u64) {
+        // SAFETY: By type invariant, `self.gendisk` points to a valid and
+        // initialized instance of `struct gendisk`. `set_capacity` takes a lock
+        // to synchronize this operation, so we will not race.
+        unsafe { bindings::set_capacity(self.gendisk, sectors) };
+    }
+
+    /// Set the rotational media attribute for the device.
+    #[cfg(disable)]
+    pub fn set_rotational(&self, rotational: bool) {
+        if !rotational {
+            // SAFETY: By type invariant, `self.gendisk` points to a valid and
+            // initialized instance of `struct gendisk`. This operation uses a
+            // relaxed atomic bit flip operation, so there is no race on this
+            // field.
+            unsafe {
+                bindings::blk_queue_flag_set(bindings::QUEUE_FLAG_NONROT, (*self.gendisk).queue)
+            };
+        } else {
+            // SAFETY: By type invariant, `self.gendisk` points to a valid and
+            // initialized instance of `struct gendisk`. This operation uses a
+            // relaxed atomic bit flip operation, so there is no race on this
+            // field.
+            unsafe {
+                bindings::blk_queue_flag_clear(bindings::QUEUE_FLAG_NONROT, (*self.gendisk).queue)
+            };
+        }
+    }
 }
 
 impl<T: Operations> Drop for GenDisk<T> {
