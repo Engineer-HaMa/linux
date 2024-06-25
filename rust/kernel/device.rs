@@ -4,9 +4,13 @@
 //!
 //! C header: [`include/linux/device.h`](srctree/include/linux/device.h)
 
+use core::{
+    marker::PhantomData,
+    ptr, //
+};
+
 use crate::{
     bindings,
-    error::{Error, Result},
     fmt,
     prelude::*,
     sync::aref::{
@@ -18,10 +22,6 @@ use crate::{
         ForeignOwnable,
         Opaque, //
     }, //
-};
-use core::{
-    marker::PhantomData,
-    ptr, //
 };
 
 pub mod property;
@@ -280,7 +280,7 @@ impl Device<Bound> {
 
 impl<Ctx: DeviceContext> Device<Ctx> {
     /// Obtain the raw `struct device *`.
-    pub(crate) fn as_raw(&self) -> *mut bindings::device {
+    pub fn as_raw(&self) -> *mut bindings::device {
         self.0.get()
     }
 
@@ -446,9 +446,11 @@ impl<Ctx: DeviceContext> Device<Ctx> {
         unsafe { CStr::from_char_ptr(bindings::dev_name(self.as_raw())) }
     }
 
+    /// Set the DMA mask for this device.
     pub fn dma_set_mask(&self, mask: u64) -> Result {
         let dev = self.as_raw();
-        let ret = unsafe { bindings::dma_set_mask(dev as _, mask) };
+        // SAFETY: `dev` is valid by the type invariant on `Device`.
+        let ret = unsafe { bindings::dma_set_mask(dev, mask) };
         if ret != 0 {
             Err(Error::from_errno(ret))
         } else {
@@ -456,9 +458,11 @@ impl<Ctx: DeviceContext> Device<Ctx> {
         }
     }
 
+    /// Set the coherent DMA mask for this device.
     pub fn dma_set_coherent_mask(&self, mask: u64) -> Result {
         let dev = self.as_raw();
-        let ret = unsafe { bindings::dma_set_coherent_mask(dev as _, mask) };
+        // SAFETY: `dev` is valid by the type invariant on `Device`.
+        let ret = unsafe { bindings::dma_set_coherent_mask(dev, mask) };
         if ret != 0 {
             Err(Error::from_errno(ret))
         } else {
