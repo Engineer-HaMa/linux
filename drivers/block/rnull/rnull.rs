@@ -21,6 +21,7 @@ use kernel::{
         },
     },
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
     error::Result,
 <<<<<<< HEAD
@@ -33,6 +34,12 @@ use kernel::{
 =======
     new_mutex, new_xarray,
 =======
+=======
+    error::{
+        code,
+        Result, //
+    },
+>>>>>>> 26e371fedd2e (block: rnull: allow specifying the home numa node)
     new_mutex,
     new_xarray,
 >>>>>>> d98e06efcdb0 (block: rnull: add `use_per_node_hctx` config option)
@@ -106,6 +113,10 @@ module! {
             default: 0,
             description:  "Use per-node allocation for hardware context queues, 0-false, 1-true. Default: 0-false",
         },
+        home_node: i32 {
+            default: -1,
+            description: "Home node for the device. Default: -1 (no node)",
+        },
     },
 }
 
@@ -142,6 +153,7 @@ impl kernel::InPlaceModule for NullBlkModule {
                     completion_time: Delta::from_nanos(completion_time),
                     memory_backed: *module_parameters::memory_backed.value() != 0,
                     submit_queues,
+                    home_node: *module_parameters::home_node.value(),
                 })?;
                 disks.push(disk, GFP_KERNEL)?;
             }
@@ -165,6 +177,7 @@ struct NullBlkOptions<'a> {
     completion_time: Delta,
     memory_backed: bool,
     submit_queues: u32,
+    home_node: i32,
 }
 struct NullBlkDevice;
 
@@ -179,6 +192,7 @@ impl NullBlkDevice {
             completion_time,
             memory_backed,
             submit_queues,
+            home_node,
         } = options;
 
         let flags = if memory_backed {
@@ -187,8 +201,12 @@ impl NullBlkDevice {
             mq::tag_set::Flags::default()
         };
 
+        if home_node > kernel::num_online_nodes().try_into()? {
+            return Err(code::EINVAL);
+        }
+
         let tagset = Arc::pin_init(
-            TagSet::new(submit_queues, 256, 1, bindings::NUMA_NO_NODE, flags),
+            TagSet::new(submit_queues, 256, 1, home_node, flags),
             GFP_KERNEL,
         )?;
 
