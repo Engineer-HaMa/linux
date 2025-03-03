@@ -9,7 +9,6 @@ use crate::{
     error::{code::EIO, Error, Result},
     fmt,
     prelude::*,
-    str::CStr,
     sync::aref::{ARef, RefCounted},
     types::{AlwaysRefCounted, ForeignOwnable, Opaque},
 };
@@ -488,6 +487,7 @@ impl<Ctx: DeviceContext> Device<Ctx> {
         Some(unsafe { &*fwnode_handle.cast() })
     }
 
+    /// Set the DMA mask for this device.
     pub fn dma_set_mask(&self, mask: u64) -> Result {
         let dev = self.as_raw();
         let ret = unsafe { bindings::dma_set_mask(dev as _, mask) };
@@ -498,6 +498,7 @@ impl<Ctx: DeviceContext> Device<Ctx> {
         }
     }
 
+    /// Set the coherent DMA mask for this device.
     pub fn dma_set_coherent_mask(&self, mask: u64) -> Result {
         let dev = self.as_raw();
         let ret = unsafe { bindings::dma_set_coherent_mask(dev as _, mask) };
@@ -508,6 +509,7 @@ impl<Ctx: DeviceContext> Device<Ctx> {
         }
     }
 
+    /// Map a scatter-gather list for DMA.
     pub fn dma_map_sg(&self, sglist: &mut [bindings::scatterlist], dir: u32) -> Result {
         let dev = self.as_raw();
         let count = sglist.len().try_into()?;
@@ -516,7 +518,7 @@ impl<Ctx: DeviceContext> Device<Ctx> {
                 dev,
                 &mut sglist[0],
                 count,
-                dir,
+                dir as _,
                 bindings::DMA_ATTR_NO_WARN.try_into()?,
             )
         };
@@ -527,10 +529,11 @@ impl<Ctx: DeviceContext> Device<Ctx> {
         Ok(())
     }
 
+    /// Unmap a scatter-gather list from DMA.
     pub fn dma_unmap_sg(&self, sglist: &mut [bindings::scatterlist], dir: u32) {
         let dev = self.as_raw();
         let count = sglist.len() as _;
-        unsafe { bindings::dma_unmap_sg_attrs(dev, &mut sglist[0], count, dir, 0) };
+        unsafe { bindings::dma_unmap_sg_attrs(dev, &mut sglist[0], count, dir as _, 0) };
     }
 }
 
