@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 
 #include <linux/dma-mapping.h>
+#include <linux/dmapool.h>
 
 __rust_helper void *rust_helper_dma_alloc_attrs(struct device *dev, size_t size,
 						dma_addr_t *dma_handle,
@@ -44,8 +45,34 @@ __rust_helper size_t rust_helper_dma_max_mapping_size(struct device *dev)
 	return dma_max_mapping_size(dev);
 }
 
+<<<<<<< HEAD
 __rust_helper void rust_helper_dma_set_max_seg_size(struct device *dev,
 						    unsigned int size)
 {
 	dma_set_max_seg_size(dev, size);
+=======
+
+struct dma_pool *rust_helper_dma_pool_create(const char *name,
+					     struct device *dev, size_t size,
+					     size_t align, size_t boundary)
+{
+	return dma_pool_create(name, dev, size, align, boundary);
+}
+
+void rust_helper_dma_pool_destroy(struct dma_pool *pool)
+{
+	dma_pool_destroy(pool);
+}
+
+void *rust_helper_dma_pool_alloc(struct dma_pool *pool, gfp_t mem_flags,
+				 dma_addr_t *handle)
+{
+	return dma_pool_alloc(pool, mem_flags, handle);
+}
+
+void rust_helper_dma_pool_free(struct dma_pool *pool, void *vaddr,
+			       dma_addr_t dma)
+{
+	dma_pool_free(pool, vaddr, dma);
+>>>>>>> 946f663820d1 (rust: dma: add dma pool support)
 }
