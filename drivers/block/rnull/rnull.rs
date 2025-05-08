@@ -21,8 +21,13 @@ use kernel::{
 <<<<<<< HEAD
 =======
     error::Result,
+<<<<<<< HEAD
     new_mutex, pr_info,
 >>>>>>> 593fa98a295d (block: rnull: add module parameters)
+=======
+    new_mutex,
+    pr_info,
+>>>>>>> 93c0555a431c (block: rust: change `queue_rq` request type to `Owned`)
     prelude::*,
     str::CString,
     sync::{
@@ -30,6 +35,10 @@ use kernel::{
         Arc,
         Mutex, //
     },
+    types::{
+        OwnableRefCounted,
+        Owned, //
+    }, //
 };
 
 module! {
@@ -132,15 +141,10 @@ impl Operations for NullBlkDevice {
     type QueueData = KBox<QueueData>;
 
     #[inline(always)]
-    fn queue_rq(queue_data: &QueueData, rq: ARef<mq::Request<Self>>, _is_last: bool) -> Result {
+    fn queue_rq(queue_data: &QueueData, rq: Owned<mq::Request<Self>>, _is_last: bool) -> Result {
         match queue_data.irq_mode {
-            IRQMode::None => mq::Request::end_ok(rq)
-                .map_err(|_e| kernel::error::code::EIO)
-                // We take no refcounts on the request, so we expect to be able to
-                // end the request. The request reference must be unique at this
-                // point, and so `end_ok` cannot fail.
-                .expect("Fatal error - expected to be able to end request"),
-            IRQMode::Soft => mq::Request::complete(rq),
+            IRQMode::None => rq.end_ok(),
+            IRQMode::Soft => mq::Request::complete(rq.into()),
         }
         Ok(())
     }
@@ -148,11 +152,9 @@ impl Operations for NullBlkDevice {
     fn commit_rqs(_queue_data: &QueueData) {}
 
     fn complete(rq: ARef<mq::Request<Self>>) {
-        mq::Request::end_ok(rq)
+        OwnableRefCounted::try_from_shared(rq)
             .map_err(|_e| kernel::error::code::EIO)
-            // We take no refcounts on the request, so we expect to be able to
-            // end the request. The request reference must be unique at this
-            // point, and so `end_ok` cannot fail.
-            .expect("Fatal error - expected to be able to end request");
+            .expect("Failed to complete request")
+            .end_ok();
     }
 }
