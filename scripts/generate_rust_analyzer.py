@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0
-"""generate_rust_analyzer - Generates the `rust-project.json` file for `rust-analyzer`.
-"""
+"""generate_rust_analyzer - Generates the `rust-project.json` file for `rust-analyzer`."""
 
 import argparse
 import json
@@ -11,6 +10,7 @@ import pathlib
 import subprocess
 import sys
 
+
 def args_crates_cfgs(cfgs):
     crates_cfgs = {}
     for cfg in cfgs:
@@ -18,6 +18,7 @@ def args_crates_cfgs(cfgs):
         crates_cfgs[crate] = vals.split()
 
     return crates_cfgs
+
 
 def generate_crates(srctree, objtree, sysroot_src, external_src, cfgs, core_edition):
     # Generate the configuration list.
@@ -35,7 +36,15 @@ def generate_crates(srctree, objtree, sysroot_src, external_src, cfgs, core_edit
     crates_indexes = {}
     crates_cfgs = args_crates_cfgs(cfgs)
 
-    def append_crate(display_name, root_module, deps, cfg=[], is_workspace_member=True, is_proc_macro=False, edition="2021"):
+    def append_crate(
+        display_name,
+        root_module,
+        deps,
+        cfg=[],
+        is_workspace_member=True,
+        is_proc_macro=False,
+        edition="2021",
+    ):
         crate = {
             "display_name": display_name,
             "root_module": str(root_module),
@@ -44,15 +53,26 @@ def generate_crates(srctree, objtree, sysroot_src, external_src, cfgs, core_edit
             "deps": [{"crate": crates_indexes[dep], "name": dep} for dep in deps],
             "cfg": cfg,
             "edition": edition,
-            "env": {
-                "RUST_MODFILE": "This is only for rust-analyzer"
-            }
+            "env": {"RUST_MODFILE": "This is only for rust-analyzer"},
         }
         if is_proc_macro:
-            proc_macro_dylib_name = subprocess.check_output(
-                [os.environ["RUSTC"], "--print", "file-names", "--crate-name", display_name, "--crate-type", "proc-macro", "-"],
-                stdin=subprocess.DEVNULL,
-            ).decode('utf-8').strip()
+            proc_macro_dylib_name = (
+                subprocess.check_output(
+                    [
+                        os.environ["RUSTC"],
+                        "--print",
+                        "file-names",
+                        "--crate-name",
+                        display_name,
+                        "--crate-type",
+                        "proc-macro",
+                        "-",
+                    ],
+                    stdin=subprocess.DEVNULL,
+                )
+                .decode("utf-8")
+                .strip()
+            )
             crate["proc_macro_dylib_path"] = f"{objtree}/rust/{proc_macro_dylib_name}"
         crates_indexes[display_name] = len(crates)
         crates.append(crate)
@@ -147,7 +167,7 @@ def generate_crates(srctree, objtree, sysroot_src, external_src, cfgs, core_edit
     append_crate(
         "pin_init_internal",
         srctree / "rust" / "pin-init" / "internal" / "src" / "lib.rs",
-        ["std", "proc_macro"],
+        ["std", "proc_macro", "proc_macro2", "quote", "syn"],
         cfg=["kernel"],
         is_proc_macro=True,
     )
@@ -171,7 +191,7 @@ def generate_crates(srctree, objtree, sysroot_src, external_src, cfgs, core_edit
     ):
         append_crate(
             display_name,
-            srctree / "rust"/ display_name / "lib.rs",
+            srctree / "rust" / display_name / "lib.rs",
             deps,
             cfg=cfg,
         )
@@ -179,14 +199,17 @@ def generate_crates(srctree, objtree, sysroot_src, external_src, cfgs, core_edit
         crates[-1]["source"] = {
             "include_dirs": [
                 str(srctree / "rust" / display_name),
-                str(objtree / "rust")
+                str(objtree / "rust"),
             ],
             "exclude_dirs": [],
         }
 
     append_crate_with_generated("bindings", ["core", "ffi", "pin_init"])
     append_crate_with_generated("uapi", ["core", "ffi", "pin_init"])
-    append_crate_with_generated("kernel", ["core", "macros", "build_error", "pin_init", "ffi", "bindings", "uapi"])
+    append_crate_with_generated(
+        "kernel",
+        ["core", "macros", "build_error", "pin_init", "ffi", "bindings", "uapi"],
+    )
 
     def is_root_crate(build_file, target):
         try:
@@ -206,8 +229,9 @@ def generate_crates(srctree, objtree, sysroot_src, external_src, cfgs, core_edit
             name = path.name.replace(".rs", "")
 
             # Skip those that are not crate roots.
-            if not is_root_crate(path.parent / "Makefile", name) and \
-               not is_root_crate(path.parent / "Kbuild", name):
+            if not is_root_crate(path.parent / "Makefile", name) and not is_root_crate(
+                path.parent / "Kbuild", name
+            ):
                 continue
 
             logging.info("Adding %s", name)
@@ -220,10 +244,11 @@ def generate_crates(srctree, objtree, sysroot_src, external_src, cfgs, core_edit
 
     return crates
 
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--verbose', '-v', action='store_true')
-    parser.add_argument('--cfgs', action='append', default=[])
+    parser.add_argument("--verbose", "-v", action="store_true")
+    parser.add_argument("--cfgs", action="append", default=[])
     parser.add_argument("core_edition")
     parser.add_argument("srctree", type=pathlib.Path)
     parser.add_argument("objtree", type=pathlib.Path)
@@ -234,15 +259,23 @@ def main():
 
     logging.basicConfig(
         format="[%(asctime)s] [%(levelname)s] %(message)s",
-        level=logging.INFO if args.verbose else logging.WARNING
+        level=logging.INFO if args.verbose else logging.WARNING,
     )
 
     rust_project = {
-        "crates": generate_crates(args.srctree, args.objtree, args.sysroot_src, args.exttree, args.cfgs, args.core_edition),
+        "crates": generate_crates(
+            args.srctree,
+            args.objtree,
+            args.sysroot_src,
+            args.exttree,
+            args.cfgs,
+            args.core_edition,
+        ),
         "sysroot": str(args.sysroot),
     }
 
     json.dump(rust_project, sys.stdout, sort_keys=True, indent=4)
+
 
 if __name__ == "__main__":
     main()
