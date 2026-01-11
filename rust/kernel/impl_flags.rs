@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0
 
+<<<<<<< HEAD
 //! Bitflag type generator.
 
 /// Common helper for declaring bitflag and bitmask types.
+=======
+//! Common helper for declaring bitflag and bitmask types.
+>>>>>>> 27cfbe876eb9 (LIST: [PATCH v8] rust: add new macro for common bitflag operations)
 ///
 /// This macro takes as input:
 /// - A struct declaration representing a bitmask type
@@ -18,6 +22,11 @@
 ///
 /// # Examples
 ///
+<<<<<<< HEAD
+=======
+/// Defining and using [`impl_flags!`]:
+///
+>>>>>>> 27cfbe876eb9 (LIST: [PATCH v8] rust: add new macro for common bitflag operations)
 /// ```
 /// use kernel::impl_flags;
 ///
@@ -29,6 +38,7 @@
 ///     /// Represents a single permission.
 ///     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 ///     pub enum Permission {
+<<<<<<< HEAD
 ///         /// Read permission.
 ///         Read = 1 << 0,
 ///
@@ -36,6 +46,10 @@
 ///         Write = 1 << 1,
 ///
 ///         /// Execute permission.
+=======
+///         Read = 1 << 0,
+///         Write = 1 << 1,
+>>>>>>> 27cfbe876eb9 (LIST: [PATCH v8] rust: add new macro for common bitflag operations)
 ///         Execute = 1 << 2,
 ///     }
 /// );
@@ -122,6 +136,7 @@ macro_rules! impl_flags {
             }
         }
 
+<<<<<<< HEAD
         impl ::core::ops::BitOr<$flag> for $flags {
             type Output = Self;
             #[inline]
@@ -137,6 +152,8 @@ macro_rules! impl_flags {
             }
         }
 
+=======
+>>>>>>> 27cfbe876eb9 (LIST: [PATCH v8] rust: add new macro for common bitflag operations)
         impl ::core::ops::BitAnd for $flags {
             type Output = Self;
             #[inline]
@@ -152,6 +169,24 @@ macro_rules! impl_flags {
             }
         }
 
+<<<<<<< HEAD
+=======
+        impl ::core::ops::BitOr<$flag> for $flags {
+            type Output = Self;
+            #[inline]
+            fn bitor(self, rhs: $flag) -> Self::Output {
+                self | Self::from(rhs)
+            }
+        }
+
+        impl ::core::ops::BitOrAssign<$flag> for $flags {
+            #[inline]
+            fn bitor_assign(&mut self, rhs: $flag) {
+                *self = *self | rhs;
+            }
+        }
+
+>>>>>>> 27cfbe876eb9 (LIST: [PATCH v8] rust: add new macro for common bitflag operations)
         impl ::core::ops::BitAnd<$flag> for $flags {
             type Output = Self;
             #[inline]
@@ -182,6 +217,7 @@ macro_rules! impl_flags {
             }
         }
 
+<<<<<<< HEAD
         impl ::core::ops::BitXor<$flag> for $flags {
             type Output = Self;
             #[inline]
@@ -197,6 +233,8 @@ macro_rules! impl_flags {
             }
         }
 
+=======
+>>>>>>> 27cfbe876eb9 (LIST: [PATCH v8] rust: add new macro for common bitflag operations)
         impl ::core::ops::Not for $flags {
             type Output = Self;
             #[inline]
@@ -237,8 +275,21 @@ macro_rules! impl_flags {
             }
         }
 
+<<<<<<< HEAD
         impl $flags {
             /// Returns an empty instance where no flags are set.
+=======
+        impl ::core::ops::BitXor<$flag> for $flags {
+            type Output = Self;
+            #[inline]
+            fn bitxor(self, rhs: $flag) -> Self::Output {
+                self ^ Self::from(rhs)
+            }
+        }
+
+        impl $flags {
+            /// Returns an empty instance of `type` where no flags are set.
+>>>>>>> 27cfbe876eb9 (LIST: [PATCH v8] rust: add new macro for common bitflag operations)
             #[inline]
             pub const fn empty() -> Self {
                 Self(0)
