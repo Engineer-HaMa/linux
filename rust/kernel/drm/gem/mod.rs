@@ -17,7 +17,8 @@ use crate::{
     prelude::*,
     sync::aref::{
         ARef,
-        AlwaysRefCounted, //
+        AlwaysRefCounted,
+        RefCounted, //
     },
     types::Opaque,
 };
@@ -42,7 +43,7 @@ macro_rules! impl_aref_for_gem_obj {
         )?
     ) => {
         // SAFETY: All GEM objects are refcounted.
-        unsafe impl $( <$( $tparam_id ),+> )? $crate::sync::aref::AlwaysRefCounted for $type
+        unsafe impl $( <$( $tparam_id ),+> )? $crate::sync::aref::RefCounted for $type
         where
             Self: IntoGEMObject,
             $( $( $bind_param : $bind_trait ),+ )?
@@ -61,6 +62,12 @@ macro_rules! impl_aref_for_gem_obj {
                 unsafe { bindings::drm_gem_object_put(obj) };
             }
         }
+        // SAFETY: GEM objects do not implement `Ownable`.
+        unsafe impl $( <$( $tparam_id ),+> )? $crate::sync::aref::AlwaysRefCounted for $type
+        where
+            Self: IntoGEMObject,
+            $( $( $bind_param : $bind_trait ),+ )?
+        {}
     };
 }
 #[cfg_attr(not(CONFIG_RUST_DRM_GEM_SHMEM_HELPER), allow(unused))]
@@ -331,7 +338,24 @@ impl<T: DriverObject> Object<T> {
     }
 }
 
-impl_aref_for_gem_obj!(impl<T> for Object<T> where T: DriverObject);
+// SAFETY: Instances of `Object<T>` are always reference-counted.
+unsafe impl<T: DriverObject> crate::sync::aref::RefCounted for Object<T> {
+    fn inc_ref(&self) {
+        // SAFETY: The existence of a shared reference guarantees that the refcount is non-zero.
+        unsafe { bindings::drm_gem_object_get(self.as_raw()) };
+    }
+
+    unsafe fn dec_ref(obj: NonNull<Self>) {
+        // SAFETY: `obj` is a valid pointer to an `Object<T>`.
+        let obj = unsafe { obj.as_ref() };
+
+        // SAFETY: The safety requirements guarantee that the refcount is non-zero.
+        unsafe { bindings::drm_gem_object_put(obj.as_raw()) }
+    }
+}
+// SAFETY: We do not implement `Ownable`, thus it is okay to obtain an `ARef<Device>` from a
+// `&Object`.
+unsafe impl<T: DriverObject> crate::sync::aref::AlwaysRefCounted for Object<T> {}
 
 impl<T: DriverObject> super::private::Sealed for Object<T> {}
 
