@@ -14,7 +14,7 @@ use crate::{
     fmt,
     prelude::*,
     str::{CStr, CString},
-    sync::aref::ARef,
+    sync::aref::{ARef, RefCounted},
     types::Opaque,
 };
 
@@ -360,7 +360,7 @@ impl fmt::Debug for FwNodeReferenceArgs {
 }
 
 // SAFETY: Instances of `FwNode` are always reference-counted.
-unsafe impl crate::sync::aref::AlwaysRefCounted for FwNode {
+unsafe impl RefCounted for FwNode {
     fn inc_ref(&self) {
         // SAFETY: The existence of a shared reference guarantees that the
         // refcount is non-zero.
@@ -373,6 +373,10 @@ unsafe impl crate::sync::aref::AlwaysRefCounted for FwNode {
         unsafe { bindings::fwnode_handle_put(obj.cast().as_ptr()) }
     }
 }
+
+// SAFETY: We do not implement `Ownable`, thus it is okay to obtain an `ARef<FwNode>` from a
+// `&FwNode`.
+unsafe impl AlwaysRefCounted for FwNode {}
 
 enum Node<'a> {
     Borrowed(&'a FwNode),
