@@ -12,7 +12,7 @@ __rust_helper void rust_helper_xa_init_flags(struct xarray *xa, gfp_t flags)
 	return xa_init_flags(xa, flags);
 }
 
-__rust_helper int rust_helper_xa_trylock(struct xarray *xa)
+int rust_helper_xa_trylock(struct xarray *xa)
 {
 	return xa_trylock(xa);
 }
