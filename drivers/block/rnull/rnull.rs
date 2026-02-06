@@ -43,7 +43,7 @@ use kernel::{
     },
     types::{BorrowIterator, OwnableRefCounted, Owned},
     xarray,
-    CacheAligned,
+    
 };
 use pin_init::PinInit;
 

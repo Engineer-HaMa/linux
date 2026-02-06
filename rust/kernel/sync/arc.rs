@@ -268,6 +268,7 @@ impl<T: ?Sized> Arc<T> {
     }
 
     /// Return a raw pointer to the data in this arc.
+    /// Returns a raw pointer to the inner value.
     pub fn as_ptr(this: &Self) -> *const T {
         let ptr = this.ptr.as_ptr();
 
@@ -771,6 +772,7 @@ impl<T> UniqueArc<T> {
         })
     }
 
+    /// Returns a raw pointer to the inner value.
     pub fn as_ptr(&self) -> *const T {
         Arc::as_ptr(&self.inner)
     }

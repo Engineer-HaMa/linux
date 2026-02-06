@@ -560,6 +560,7 @@ where
         unsafe { from_repr(ret) }
     }
 
+    /// Subtracts from the current value, returning the previous value.
     pub fn fetch_sub<Rhs, Ordering: ordering::Ordering>(&self, v: Rhs, _: Ordering) -> T
     where
         // Types that support addition also support subtraction.

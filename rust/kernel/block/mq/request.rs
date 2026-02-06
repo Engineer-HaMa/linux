@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
+#![allow(missing_docs)]
 
 //! This module provides a wrapper for the C `struct request` type.
 //!
@@ -7,10 +8,9 @@
 use crate::{
     bindings,
     block::mq::Operations,
-    error::Result,
     sync::{
-        aref::{ARef, AlwaysRefCounted, RefCounted},
-        atomic::Relaxed,
+        aref::{ARef, RefCounted},
+        atomic::{ordering},
         Refcount,
     },
     time::hrtimer::{
@@ -18,7 +18,7 @@ use crate::{
     },
     types::{ForeignOwnable, Opaque, Ownable, OwnableRefCounted, Owned},
 };
-use core::{ffi::c_void, marker::PhantomData, ops::Deref, ptr::NonNull, sync::atomic::Ordering};
+use core::{ffi::c_void, marker::PhantomData, ops::Deref, ptr::NonNull};
 
 use crate::block::bio::Bio;
 use crate::block::bio::BioIterator;

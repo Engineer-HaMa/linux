@@ -12,10 +12,10 @@ use crate::{
     },
     error::{from_result, Result},
     prelude::*,
-    sync::{aref::ARef, Refcount},
+    sync::{aref::ARef, atomic::ordering, Refcount},
     types::{ForeignOwnable, Owned},
 };
-use core::{marker::PhantomData, ptr::NonNull};
+use core::{marker::PhantomData};
 use pin_init::PinInit;
 
 type ForeignBorrowed<'a, T> = <T as ForeignOwnable>::Borrowed<'a>;

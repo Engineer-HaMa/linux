@@ -163,6 +163,7 @@ impl Error {
     }
 
     #[cfg(CONFIG_BLOCK)]
+    #[allow(dead_code)]
     pub(crate) fn to_blk_status(self) -> bindings::blk_status_t {
         // SAFETY: `self.0` is a valid error due to its invariant.
         unsafe { bindings::errno_to_blk_status(self.0.get()) }
