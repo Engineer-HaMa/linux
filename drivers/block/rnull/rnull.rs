@@ -43,7 +43,7 @@ use kernel::{
     },
     types::{BorrowIterator, OwnableRefCounted, Owned},
     xarray,
-    
+
 };
 use pin_init::PinInit;
 
@@ -570,7 +570,7 @@ impl Operations for NullBlkDevice {
     type TagSetData = ();
     type HwData = Pin<KBox<SpinLock<HwQueueContext>>>;
 
-    fn new_request_data() -> impl PinInit<Self::RequestData> {
+    fn new_request_data(_tagset_data: &mq::TagSetDataHandle<()>) -> impl PinInit<Self::RequestData> + 'static {
         pin_init!(Pdu {
             timer <- HrTimer::new(),
             error: Atomic::new(0),

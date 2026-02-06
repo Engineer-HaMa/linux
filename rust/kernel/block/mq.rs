@@ -81,7 +81,8 @@
 //!     type TagSetData = ();
 //!
 //!     fn new_request_data(
-//!     ) -> impl PinInit<()> {
+//!         _tagset_data: &TagSetDataHandle<()>,
+//!     ) -> impl PinInit<()> + 'static {
 //!         pin_init::zeroed::<()>()
 //!     }
 //!
@@ -123,6 +124,7 @@ mod request_queue;
 mod tag_set;
 
 pub use operations::Operations;
+pub use operations::TagSetDataHandle;
 pub use request::IdleRequest;
 pub use request::Request;
 pub use request::RequestQueue;
