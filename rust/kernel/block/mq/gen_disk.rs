@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
+#![allow(missing_docs)]
 
 //! Generic disk abstraction.
 //!
@@ -275,6 +276,7 @@ impl<T: Operations> Drop for GenDisk<T> {
 pub struct GenDiskRef<T: Operations>(NonNull<GenDisk<T>>);
 
 impl<T: Operations> GenDiskRef<T> {
+    #[allow(dead_code)]
     unsafe fn set_ptr(&self) {}
 }
 

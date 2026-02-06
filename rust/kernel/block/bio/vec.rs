@@ -190,7 +190,7 @@ impl<'a> BioSegmentIterator<'a> {
     /// Creeate a new segemnt iterator for iterating the segments of `bio`. The
     /// iterator starts at the beginning of `bio`.
     #[inline(always)]
-    pub(crate) fn new(bio: &'a Bio) -> BioSegmentIterator<'_> {
+    pub(crate) fn new(bio: &'a Bio) -> BioSegmentIterator<'a> {
         // SAFETY: `bio.raw_iter()` returns an index that indexes into a valid
         // `bio_vec` in `bio.io_vec()`.
         Self {

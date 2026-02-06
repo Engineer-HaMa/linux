@@ -19,9 +19,12 @@ pub const SECTOR_SIZE: u32 = bindings::SECTOR_SIZE;
 /// expressed as a power of two.
 pub const PAGE_SECTORS_SHIFT: u32 = bindings::PAGE_SECTORS_SHIFT;
 
+/// Block layer error handling.
 pub mod error {
+#![allow(missing_docs)]
     use core::num::NonZeroU8;
 
+    /// Block layer error codes.
     pub mod code {
         macro_rules! declare_err {
             ($err:tt $(,)? $($doc:expr),+) => {
@@ -42,6 +45,7 @@ pub mod error {
     }
 
     #[derive(Clone, Copy, PartialEq, Eq)]
+    /// Block layer error type.
     pub struct BlkError(NonZeroU8);
 
     impl BlkError {
@@ -54,6 +58,7 @@ pub mod error {
             }
         }
 
+        /// Converts to a blk_status_t.
         pub fn to_blk_status(self) -> bindings::blk_status_t {
             self.0.into()
         }
@@ -73,8 +78,10 @@ pub mod error {
         }
     }
 
+    /// Result type for block layer operations.
     pub type BlkResult<T = ()> = Result<T, BlkError>;
 
+    /// Converts blk_status_t to BlkResult.
     pub fn to_result(status: bindings::blk_status_t) -> BlkResult {
         if status == bindings::BLK_STS_OK as u8 {
             Ok(())

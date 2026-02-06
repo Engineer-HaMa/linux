@@ -14,7 +14,7 @@ use kernel::{
     c_str,
     configfs::{self, AttributeOperations},
     configfs_attrs,
-    fmt::{self, Write as _},
+    
     new_mutex,
     page::PAGE_SIZE,
     prelude::*,
@@ -26,7 +26,7 @@ use pin_init::PinInit;
 
 fn show_field<T: core::fmt::Display>(value: T, page: &mut [u8; PAGE_SIZE]) -> Result<usize> {
     let mut writer = kernel::str::Formatter::new(page);
-    writer.write_fmt(fmt!("{}\n", value))?;
+    core::write!(writer, "{}\n", value)?;
     Ok(writer.bytes_written())
 }
 
