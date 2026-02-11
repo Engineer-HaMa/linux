@@ -22,8 +22,8 @@ use kernel::types::ARef;
 use kernel::types::AtomicOptionalBoxedPtr;
 use kernel::types::BorrowIterator;
 use kernel::types::ForeignOwnable;
-use kernel::types::Owned;
 use kernel::types::OwnableRefCounted;
+use kernel::types::Owned;
 use nvme_prp::*;
 
 mod nvme_prp;
@@ -38,10 +38,9 @@ impl mq::Operations for AdminQueueOperations {
     type TagSetData = Arc<NvmeData>;
 
     fn new_request_data(
-        tagset_data: &mq::TagSetDataHandle<Arc<NvmeData>>,
-    ) -> impl PinInit<Self::RequestData> + 'static {
-        let tagset_data = tagset_data.borrow();
-        let dev: ARef<kernel::device::Device> = tagset_data.pci_dev.as_ref().into();
+        tagset_data: <Self::TagSetData as ForeignOwnable>::Borrowed<'_>,
+    ) -> impl PinInit<Self::RequestData> {
+        let device = tagset_data.pci_dev.as_ref().into();
         let dma_pool = tagset_data.dma_pool.clone();
         pin_init!(NvmeRequest {
             dma_addr: AtomicU64::new(!0),
@@ -49,13 +48,13 @@ impl mq::Operations for AdminQueueOperations {
             status: AtomicU16::new(0),
             direction: AtomicU32::new(bindings::dma_data_direction_DMA_FROM_DEVICE as u32),
             len: AtomicU32::new(0),
-            dev: Some(dev),
+            dev: device,
             cmd: SyncUnsafeCell::new(NvmeCommand::default()),
             sg_count: AtomicU32::new(0),
             page_count: AtomicU32::new(0),
             first_dma: AtomicU64::new(0),
             mapping_data: AtomicOptionalBoxedPtr::new(None),
-            dma_pool: Some(dma_pool),
+            dma_pool: dma_pool,
         })
     }
 
@@ -99,10 +98,9 @@ impl mq::Operations for IoQueueOperations {
     type TagSetData = Arc<NvmeData>;
 
     fn new_request_data(
-        tagset_data: &mq::TagSetDataHandle<Arc<NvmeData>>,
-    ) -> impl PinInit<Self::RequestData> + 'static {
-        let tagset_data = tagset_data.borrow();
-        let dev: ARef<kernel::device::Device> = tagset_data.pci_dev.as_ref().into();
+        tagset_data: <Self::TagSetData as ForeignOwnable>::Borrowed<'_>,
+    ) -> impl PinInit<Self::RequestData> {
+        let device = tagset_data.pci_dev.as_ref().into();
         let dma_pool = tagset_data.dma_pool.clone();
         pin_init!(NvmeRequest {
             dma_addr: AtomicU64::new(!0),
@@ -110,13 +108,13 @@ impl mq::Operations for IoQueueOperations {
             status: AtomicU16::new(0),
             direction: AtomicU32::new(bindings::dma_data_direction_DMA_FROM_DEVICE as u32),
             len: AtomicU32::new(0),
-            dev: Some(dev),
+            dev: device,
             cmd: SyncUnsafeCell::new(NvmeCommand::default()),
             sg_count: AtomicU32::new(0),
             page_count: AtomicU32::new(0),
             first_dma: AtomicU64::new(0),
             mapping_data: AtomicOptionalBoxedPtr::new(None),
-            dma_pool: Some(dma_pool),
+            dma_pool: dma_pool,
         })
     }
 
@@ -153,8 +151,9 @@ impl mq::Operations for IoQueueOperations {
     fn map_queues(tag_set: &mq::TagSet<Self>) {
         // TODO: Build abstractions for these unsafe calls
         unsafe {
-            let device_data =
-                <Self::TagSetData as ForeignOwnable>::borrow((*tag_set.raw_tag_set()).driver_data.cast());
+            let device_data = <Self::TagSetData as ForeignOwnable>::borrow(
+                (*tag_set.raw_tag_set()).driver_data.cast(),
+            );
             let num_maps = (*tag_set.raw_tag_set()).nr_maps;
             pr_info!("num_maps: {}\n", num_maps);
             let mut queue_offset: u32 = 0;
@@ -274,7 +273,8 @@ where
 
             let mut md = KBox::new(MappingData::default(), flags::GFP_ATOMIC)
                 .map_err(|_| kernel::block::error::code::BLK_STS_IOERR)?;
-            let count = rq.map_sg(&mut md.sg)
+            let count = rq
+                .map_sg(&mut md.sg)
                 .map_err(|_| kernel::block::error::code::BLK_STS_IOERR)?;
             let dev = io_queue.data.pci_dev.as_ref();
             dev.dma_map_sg(&mut md.sg[..count as usize], direction)
@@ -319,33 +319,27 @@ where
     let pdu = rq.data_ref();
 
     if let Some(mut md) = pdu.mapping_data.take(Ordering::Relaxed) {
-        if let Some(ref dev) = pdu.dev {
-            dev.dma_unmap_sg(
-                &mut md.sg[..pdu.sg_count.load(Ordering::Relaxed) as usize],
-                pdu.direction.load(Ordering::Relaxed),
-            );
-        }
-        if let Some(ref dma_pool) = pdu.dma_pool {
-            free_prps(
-                pdu.page_count.load(Ordering::Relaxed) as _,
-                &md.pages,
-                pdu.first_dma.load(Ordering::Relaxed),
-                dma_pool,
-            );
-        }
+        pdu.dev.dma_unmap_sg(
+            &mut md.sg[..pdu.sg_count.load(Ordering::Relaxed) as usize],
+            pdu.direction.load(Ordering::Relaxed),
+        );
+        free_prps(
+            pdu.page_count.load(Ordering::Relaxed) as _,
+            &md.pages,
+            pdu.first_dma.load(Ordering::Relaxed),
+            &pdu.dma_pool,
+        );
     } else {
         // Unmap the page we mapped.
-        if let Some(ref dev) = pdu.dev {
-            unsafe {
-                bindings::dma_unmap_page_attrs(
-                    dev.as_raw(),
-                    pdu.dma_addr.load(Ordering::Relaxed),
-                    pdu.len.load(Ordering::Relaxed) as _,
-                    pdu.direction.load(Ordering::Relaxed) as i32,
-                    0,
-                )
-            };
-        }
+        unsafe {
+            bindings::dma_unmap_page_attrs(
+                pdu.dev.as_raw(),
+                pdu.dma_addr.load(Ordering::Relaxed),
+                pdu.len.load(Ordering::Relaxed) as _,
+                pdu.direction.load(Ordering::Relaxed) as i32,
+                0,
+            )
+        };
     }
 
     // On failure, complete the request immediately with an error.
