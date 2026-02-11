@@ -15,45 +15,12 @@ use crate::{
     sync::{aref::ARef, atomic::ordering, Refcount},
     types::{ForeignOwnable, Owned},
 };
-use core::{marker::PhantomData};
+use core::marker::PhantomData;
 use pin_init::PinInit;
 
 use super::TagSet;
 
 type ForeignBorrowed<'a, T> = <T as ForeignOwnable>::Borrowed<'a>;
-
-/// An opaque handle to `TagSet` driver data.
-///
-/// This type wraps the raw `driver_data` pointer from `struct blk_mq_tag_set`
-/// and provides a safe [`borrow`](TagSetDataHandle::borrow) method to access
-/// the underlying data. It is passed to [`Operations::new_request_data`] so
-/// that driver implementations can initialise per-request data from the tag-set
-/// data without touching raw pointers.
-pub struct TagSetDataHandle<T: ForeignOwnable> {
-    ptr: *mut core::ffi::c_void,
-    _marker: PhantomData<T>,
-}
-
-impl<T: ForeignOwnable> TagSetDataHandle<T> {
-    /// Create a new handle from a raw `driver_data` pointer.
-    ///
-    /// # Safety
-    ///
-    /// `ptr` must have been returned by a previous call to
-    /// `T::into_foreign` and must remain valid for the lifetime of this handle.
-    pub(crate) unsafe fn new(ptr: *mut core::ffi::c_void) -> Self {
-        Self {
-            ptr,
-            _marker: PhantomData,
-        }
-    }
-
-    /// Borrow the underlying data.
-    pub fn borrow(&self) -> T::Borrowed<'_> {
-        // SAFETY: The pointer is valid by the safety requirements of `new`.
-        unsafe { T::borrow(self.ptr) }
-    }
-}
 
 /// Implement this trait to interface blk-mq as block devices.
 ///
@@ -92,8 +59,8 @@ pub trait Operations: Sized {
 
     /// Called by the kernel to get an initializer for a `Pin<&mut RequestData>`.
     fn new_request_data(
-        tagset_data: &TagSetDataHandle<Self::TagSetData>,
-    ) -> impl PinInit<Self::RequestData> + 'static;
+        _tagset_data: ForeignBorrowed<'_, Self::TagSetData>,
+    ) -> impl PinInit<Self::RequestData>;
 
     /// Called by the kernel to queue a request with the driver. If `is_last` is
     /// `false`, the driver is allowed to defer committing the request.
@@ -354,8 +321,8 @@ impl<T: Operations> OperationsVTable<T> {
             // SAFETY: Because `set` is a `TagSet<T>`, `driver_data` comes from
             // a call to `into_foreign` by the initializer returned by
             // `TagSet::new`.
-            let handle = unsafe { TagSetDataHandle::<T::TagSetData>::new((*set).driver_data) };
-            let initializer = T::new_request_data(&handle);
+            let tagset_data = unsafe { T::TagSetData::borrow((*set).driver_data) };
+            let initializer = T::new_request_data(tagset_data);
 
             // SAFETY: `pdu` is a valid pointer as established above. We do not
             // touch `pdu` if `__pinned_init` returns an error. We promise ot to

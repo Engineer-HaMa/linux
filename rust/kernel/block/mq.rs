@@ -81,8 +81,8 @@
 //!     type TagSetData = ();
 //!
 //!     fn new_request_data(
-//!         _tagset_data: &TagSetDataHandle<()>,
-//!     ) -> impl PinInit<()> + 'static {
+//!         _tagset_data: <Self::TagSetData as ForeignOwnable>::Borrowed<'_>,
+//!     ) -> impl PinInit<()> {
 //!         pin_init::zeroed::<()>()
 //!     }
 //!
@@ -124,7 +124,6 @@ mod request_queue;
 mod tag_set;
 
 pub use operations::Operations;
-pub use operations::TagSetDataHandle;
 pub use request::IdleRequest;
 pub use request::Request;
 pub use request::RequestTimerHandle;

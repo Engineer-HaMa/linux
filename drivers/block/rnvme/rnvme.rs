@@ -16,8 +16,7 @@ use kernel::{
     bindings,
     block::mq,
     block::mq::gen_disk::GenDisk,
-    c_str,
-    device,
+    c_str, device,
     devres::Devres,
     dma,
     error::code::*,
@@ -81,13 +80,13 @@ struct NvmeShadow {
 
 #[pin_data]
 struct NvmeRequest {
-    dma_pool: Option<Arc<dma::Pool<le<u64>>>>,
+    dma_pool: Arc<dma::Pool<le<u64>>>,
     dma_addr: AtomicU64,
     result: AtomicU32,
     status: AtomicU16,
     direction: AtomicU32,
     len: AtomicU32,
-    dev: Option<ARef<device::Device>>,
+    dev: ARef<device::Device>,
     cmd: SyncUnsafeCell<NvmeCommand>,
     sg_count: AtomicU32,
     page_count: AtomicU32,
@@ -262,16 +261,10 @@ impl NvmeDevice {
         let tagset = Self::setup_io_queues(dev, pci_dev, mq)?;
         pr_info!("setup_io_queues done\n");
 
-        let id: dma::CoherentAllocation<u8> = dma::CoherentAllocation::alloc_coherent(
-            pci_dev.as_ref(),
-            4096,
-            flags::GFP_KERNEL,
-        )?;
-        let rt: dma::CoherentAllocation<u8> = dma::CoherentAllocation::alloc_coherent(
-            pci_dev.as_ref(),
-            4096,
-            flags::GFP_KERNEL,
-        )?;
+        let id: dma::CoherentAllocation<u8> =
+            dma::CoherentAllocation::alloc_coherent(pci_dev.as_ref(), 4096, flags::GFP_KERNEL)?;
+        let rt: dma::CoherentAllocation<u8> =
+            dma::CoherentAllocation::alloc_coherent(pci_dev.as_ref(), 4096, flags::GFP_KERNEL)?;
 
         // Identify the device.
         Self::identify(mq, 0, 1, id.dma_handle())?;
@@ -368,7 +361,14 @@ impl NvmeDevice {
         //TODO: Depth?
         let queue_depth = 64;
         let admin_tagset: Arc<mq::TagSet<nvme_mq::AdminQueueOperations>> = Arc::pin_init(
-            mq::TagSet::new(1, dev.clone(), queue_depth, 1, bindings::NUMA_NO_NODE, mq::Flags::default()),
+            mq::TagSet::new(
+                1,
+                dev.clone(),
+                queue_depth,
+                1,
+                bindings::NUMA_NO_NODE,
+                mq::Flags::default(),
+            ),
             flags::GFP_KERNEL,
         )?;
         let admin_queue: Arc<nvme_queue::NvmeQueue<nvme_mq::AdminQueueOperations>> =

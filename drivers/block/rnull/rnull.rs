@@ -43,7 +43,6 @@ use kernel::{
     },
     types::{BorrowIterator, OwnableRefCounted, Owned},
     xarray,
-
 };
 use pin_init::PinInit;
 
@@ -252,9 +251,7 @@ impl NullBlkDevice {
         };
 
         let tagset = if shared_tagset {
-            SHARED_TAG_SET
-                .as_ref_or_populate_with(tagset_ctor)?
-                .clone()
+            SHARED_TAG_SET.as_ref_or_populate_with(tagset_ctor)?.clone()
         } else {
             tagset_ctor()?
         };
@@ -570,7 +567,9 @@ impl Operations for NullBlkDevice {
     type TagSetData = ();
     type HwData = Pin<KBox<SpinLock<HwQueueContext>>>;
 
-    fn new_request_data(_tagset_data: &mq::TagSetDataHandle<()>) -> impl PinInit<Self::RequestData> + 'static {
+    fn new_request_data(
+        _tagset_data: <Self::TagSetData as kernel::types::ForeignOwnable>::Borrowed<'_>,
+    ) -> impl PinInit<Self::RequestData> {
         pin_init!(Pdu {
             timer <- HrTimer::new(),
             error: Atomic::new(0),
