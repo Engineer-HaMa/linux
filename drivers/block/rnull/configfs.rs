@@ -26,7 +26,8 @@ use kernel::{
         kstrtobool_bytes,
         CString, //
     },
-    sync::Mutex, //
+    sync::Mutex,
+    time, //
 };
 use macros::{
     configfs_simple_bool_field,
@@ -57,7 +58,7 @@ impl AttributeOperations<0> for Config {
 
     fn show(_this: &Config, page: &mut [u8; PAGE_SIZE]) -> Result<usize> {
         let mut writer = kernel::str::Formatter::new(page);
-        writer.write_str("blocksize,size,rotational,irqmode\n")?;
+        writer.write_str("blocksize,size,rotational,irqmode,completion_nsec\n")?;
         Ok(writer.bytes_written())
     }
 }
@@ -80,6 +81,7 @@ impl configfs::GroupOperations for Config {
                 rotational: 2,
                 size: 3,
                 irqmode: 4,
+                completion_nsec: 5,
             ],
         };
 
@@ -95,6 +97,7 @@ impl configfs::GroupOperations for Config {
                     disk: None,
                     capacity_mib: 4096,
                     irq_mode: IRQMode::None,
+                    completion_time: time::Delta::ZERO,
                     name: name.try_into()?,
                 }),
             }),
@@ -107,6 +110,7 @@ impl configfs::GroupOperations for Config {
 pub(crate) enum IRQMode {
     None,
     Soft,
+    Timer,
 }
 
 impl TryFrom<u8> for IRQMode {
@@ -116,6 +120,7 @@ impl TryFrom<u8> for IRQMode {
         match value {
             0 => Ok(Self::None),
             1 => Ok(Self::Soft),
+            2 => Ok(Self::Timer),
             _ => Err(EINVAL),
         }
     }
@@ -126,6 +131,7 @@ impl fmt::Display for IRQMode {
         match self {
             Self::None => f.write_str("0")?,
             Self::Soft => f.write_str("1")?,
+            Self::Timer => f.write_str("2")?,
         }
         Ok(())
     }
@@ -145,6 +151,7 @@ struct DeviceConfigInner {
     rotational: bool,
     capacity_mib: u64,
     irq_mode: IRQMode,
+    completion_time: time::Delta,
     disk: Option<GenDisk<NullBlkDevice>>,
 }
 
@@ -175,6 +182,7 @@ impl configfs::AttributeOperations<0> for DeviceConfig {
                 guard.rotational,
                 guard.capacity_mib,
                 guard.irq_mode,
+                guard.completion_time,
             )?);
             guard.powered = true;
         } else if guard.powered && !power_op {
@@ -190,6 +198,7 @@ configfs_simple_field!(DeviceConfig, 1, block_size, u32, check GenDiskBuilder::v
 configfs_simple_bool_field!(DeviceConfig, 2, rotational);
 configfs_simple_field!(DeviceConfig, 3, capacity_mib, u64);
 configfs_simple_field!(DeviceConfig, 4, irq_mode, IRQMode);
+configfs_simple_field!(DeviceConfig, 5, completion_time, i64, into time::Delta::from_nanos);
 
 impl core::str::FromStr for IRQMode {
     type Err = Error;
