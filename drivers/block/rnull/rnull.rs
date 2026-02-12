@@ -25,19 +25,28 @@ use kernel::{
     error::Result,
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
     new_mutex, pr_info,
 >>>>>>> 593fa98a295d (block: rnull: add module parameters)
 =======
     new_mutex,
 =======
     new_mutex, new_xarray,
+=======
+    new_mutex,
+    new_xarray,
+>>>>>>> d98e06efcdb0 (block: rnull: add `use_per_node_hctx` config option)
     page::SafePage,
 >>>>>>> f09e763ce4bb (block: rnull: add memory backing)
     pr_info,
 >>>>>>> 93c0555a431c (block: rust: change `queue_rq` request type to `Owned`)
     prelude::*,
     str::CString,
-    sync::{aref::ARef, Arc, Mutex},
+    sync::{
+        aref::ARef,
+        Arc,
+        Mutex, //
+    },
     time::{
         hrtimer::{
             HrTimerCallback,
@@ -51,7 +60,7 @@ use kernel::{
         OwnableRefCounted,
         Owned, //
     },
-    xarray::XArray,
+    xarray::XArray, //
 };
 
 module! {
@@ -93,6 +102,10 @@ module! {
             default: 1,
             description: "Number of submission queues",
         },
+        use_per_node_hctx: u8 {
+            default: 0,
+            description:  "Use per-node allocation for hardware context queues, 0-false, 1-true. Default: 0-false",
+        },
     },
 }
 
@@ -115,6 +128,11 @@ impl kernel::InPlaceModule for NullBlkModule {
             for i in 0..(*module_parameters::nr_devices.value()) {
                 let name = CString::try_from_fmt(fmt!("rnullb{}", i))?;
 
+                let submit_queues = if *module_parameters::use_per_node_hctx.value() != 0 {
+                    kernel::num_online_nodes()
+                } else {
+                    *module_parameters::submit_queues.value()
+                };
                 let disk = NullBlkDevice::new(NullBlkOptions {
                     name: &name,
                     block_size: *module_parameters::bs.value(),
@@ -123,7 +141,7 @@ impl kernel::InPlaceModule for NullBlkModule {
                     irq_mode: (*module_parameters::irqmode.value()).try_into()?,
                     completion_time: Delta::from_nanos(completion_time),
                     memory_backed: *module_parameters::memory_backed.value() != 0,
-                    submit_queues: *module_parameters::submit_queues.value(),
+                    submit_queues,
                 })?;
                 disks.push(disk, GFP_KERNEL)?;
             }
