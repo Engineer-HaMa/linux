@@ -85,8 +85,8 @@
 //!         pin_init::zeroed::<()>()
 //!     }
 //!
-//!     fn queue_rq(_hw_data: (),_queue_data: (), rq: Owned<Request<Self>>, _is_last: bool) -> Result {
-//!         rq.end_ok();
+//!     fn queue_rq(_hw_data: (),_queue_data: (), rq: Owned<IdleRequest<Self>>, _is_last: bool) -> Result {
+//!         rq.start().end_ok();
 //!         Ok(())
 //!     }
 //!
@@ -122,6 +122,7 @@ mod request;
 pub mod tag_set;
 
 pub use operations::Operations;
+pub use request::IdleRequest;
 pub use request::Request;
 pub use request::RequestTimerHandle;
 pub use tag_set::TagSet;
