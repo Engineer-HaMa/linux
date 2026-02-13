@@ -130,6 +130,7 @@ impl configfs::GroupOperations for Config {
                 zone_max_active: 25,
                 zone_append_max_sectors: 26,
                 poll_queues: 27,
+                fua: 28,
             ],
         };
 
@@ -170,6 +171,7 @@ impl configfs::GroupOperations for Config {
                     zone_max_active: 0,
                     zone_append_max_sectors: u32::MAX,
                     poll_queues: 0,
+                    fua: true,
                 }),
             }),
             core::iter::empty(),
@@ -246,6 +248,7 @@ struct DeviceConfigInner {
     zone_max_active: u32,
     zone_append_max_sectors: u32,
     poll_queues: u32,
+    fua: bool,
 }
 
 #[vtable]
@@ -297,6 +300,7 @@ impl configfs::AttributeOperations<0> for DeviceConfig {
                 zone_max_active: guard.zone_max_active,
                 zone_append_max_sectors: guard.zone_append_max_sectors,
                 poll_queues: guard.poll_queues,
+                forced_unit_access: guard.fua,
             })?);
             guard.powered = true;
         } else if guard.powered && !power_op {
@@ -535,3 +539,4 @@ configfs_simple_field!(
         }
     }
 );
+configfs_simple_bool_field!(DeviceConfig, 28, fua);
