@@ -116,6 +116,7 @@ pub mod pwm;
 pub mod rbtree;
 pub mod regulator;
 pub mod revocable;
+pub mod ringbuffer;
 pub mod safety;
 pub mod scatterlist;
 pub mod security;
