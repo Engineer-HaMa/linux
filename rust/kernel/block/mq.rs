@@ -85,7 +85,7 @@
 //!         pin_init::zeroed::<()>()
 //!     }
 //!
-//!     fn queue_rq(_hw_data: (),_queue_data: (), rq: Owned<IdleRequest<Self>>, _is_last: bool, is_poll: bool) -> BlkResult {
+//!     fn queue_rq(_hw_data: (),_queue_data: (), rq: Owned<IdleRequest<Self>>, _is_last: bool) -> BlkResult {
 //!         rq.start().end_ok();
 //!         Ok(())
 //!     }
