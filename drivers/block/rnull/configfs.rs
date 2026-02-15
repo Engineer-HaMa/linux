@@ -83,7 +83,7 @@ impl AttributeOperations<0> for Config {
         let mut writer = kernel::str::Formatter::new(page);
         writer.write_str(
             "blocksize,size,rotational,irqmode,completion_nsec,memory_backed\
-             submit_queues,use_per_node_hctx,discard,blocking\n",
+             submit_queues,use_per_node_hctx,discard,blocking,shared_tags\n",
         )?;
         Ok(writer.bytes_written())
     }
@@ -120,6 +120,7 @@ impl configfs::GroupOperations for Config {
                 cache_size_mib: 15,
                 mbps: 16,
                 blocking: 17,
+                shared_tags: 18,
             ],
         };
 
@@ -150,6 +151,7 @@ impl configfs::GroupOperations for Config {
                     cache_size_mib: 0,
                     mbps: 0,
                     blocking: false,
+                    shared_tags: false,
                 }),
             }),
             core::iter::empty(),
@@ -216,6 +218,7 @@ struct DeviceConfigInner {
     disk_storage: Arc<DiskStorage>,
     mbps: u32,
     blocking: bool,
+    shared_tags: bool,
 }
 
 #[vtable]
@@ -257,6 +260,7 @@ impl configfs::AttributeOperations<0> for DeviceConfig {
                 storage: guard.disk_storage.clone(),
                 bandwidth_limit: u64::from(guard.mbps) * 2u64.pow(20),
                 blocking: guard.blocking,
+                shared_tags: guard.shared_tags,
             })?);
             guard.powered = true;
         } else if guard.powered && !power_op {
@@ -473,3 +477,4 @@ configfs_attribute!(DeviceConfig, 15,
 
 configfs_simple_field!(DeviceConfig, 16, mbps, u32);
 configfs_simple_bool_field!(DeviceConfig, 17, blocking);
+configfs_simple_bool_field!(DeviceConfig, 18, shared_tags);
