@@ -138,7 +138,11 @@ pub mod pwm;
 pub mod rbtree;
 pub mod regulator;
 pub mod revocable;
+<<<<<<< HEAD
 pub mod safety;
+=======
+pub mod ringbuffer;
+>>>>>>> e119d849280b (LIST: [PATCH] rust: add a ring buffer implementation)
 pub mod scatterlist;
 pub mod security;
 pub mod seq_file;
