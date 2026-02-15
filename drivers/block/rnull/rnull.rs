@@ -28,7 +28,10 @@ use kernel::{
             BadBlocks, //
         },
         bio::Segment,
-        error::{BlkError, BlkResult},
+        error::{
+            BlkError,
+            BlkResult, //
+        },
         mq::{
             self,
             gen_disk::{
@@ -84,7 +87,11 @@ use kernel::{
 >>>>>>> 646b9741be54 (block: rnull: add discard support)
 =======
     new_spinlock,
+<<<<<<< HEAD
 >>>>>>> 23e614191bee (block: rnull: add volatile cache emulation)
+=======
+    page::PAGE_SIZE,
+>>>>>>> 8c57b8bb73b1 (block: rnull: add `virt_boundary` option)
     pr_info,
 >>>>>>> 93c0555a431c (block: rust: change `queue_rq` request type to `Owned`)
     prelude::*,
@@ -241,6 +248,10 @@ module! {
             default: 0,
             description: "Maximum size of a command (in 512B sectors)",
         },
+        virt_boundary: u8 {
+            default: 0,
+            description: "Set alignment requirement for IO buffers to be page size.",
+        },
     },
 }
 
@@ -318,6 +329,7 @@ impl kernel::InPlaceModule for NullBlkModule {
                     #[cfg(CONFIG_BLK_DEV_RUST_NULL_FAULT_INJECTION)]
                     timeout_inject: Arc::pin_init(FaultConfig::new(c"timeout_inject"), GFP_KERNEL)?,
                     max_sectors: *module_parameters::max_sectors.value(),
+                    virt_boundary: *module_parameters::virt_boundary.value() != 0,
                 })?;
                 disks.push(disk, GFP_KERNEL)?;
             }
@@ -373,6 +385,7 @@ struct NullBlkOptions<'a> {
     #[cfg(CONFIG_BLK_DEV_RUST_NULL_FAULT_INJECTION)]
     timeout_inject: Arc<FaultConfig>,
     max_sectors: u32,
+    virt_boundary: bool,
 }
 
 static SHARED_TAG_SET: SetOnce<Arc<TagSet<NullBlkDevice>>> = SetOnce::new();
@@ -445,6 +458,7 @@ impl NullBlkDevice {
             #[cfg(CONFIG_BLK_DEV_RUST_NULL_FAULT_INJECTION)]
             timeout_inject,
             max_sectors,
+            virt_boundary,
         } = options;
 
         let mut flags = mq::tag_set::Flags::default();
@@ -542,6 +556,10 @@ impl NullBlkDevice {
             .write_cache(storage.cache_enabled())
             .forced_unit_access(forced_unit_access && storage.cache_enabled())
             .max_sectors(max_sectors);
+
+        if virt_boundary {
+            builder = builder.virt_boundary_mask(PAGE_SIZE - 1);
+        }
 
         #[cfg(CONFIG_BLK_DEV_ZONED)]
         {
