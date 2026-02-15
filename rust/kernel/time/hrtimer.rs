@@ -402,6 +402,7 @@
 //! ```
 //!
 //! [`Arc`]: kernel::sync::Arc
+//! A timer is **active** if it is either in the **started** or **running** states.
 
 use super::{ClockSource, Delta, Instant};
 use crate::{prelude::*, types::Opaque};
@@ -581,6 +582,14 @@ impl<T> HrTimer<T> {
                 core::ptr::read_volatile(&raw const ((*c_timer_ptr).node.expires)),
             )
         }
+    }
+
+    /// Query the state of the timer.
+    ///
+    /// Returns `true` if the timer is in the started or running states.
+    pub fn active(&self) -> bool {
+        // SAFETY: By type invariant, `self.timer` is valid.
+        unsafe { bindings::hrtimer_active(self.timer.get()) }
     }
 }
 
