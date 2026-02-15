@@ -120,6 +120,7 @@ mod feature;
 pub mod gen_disk;
 mod operations;
 mod request;
+mod request_list;
 mod request_queue;
 pub mod tag_set;
 
@@ -132,6 +133,7 @@ pub use request::Flags as RequestFlags;
 pub use request::IdleRequest;
 pub use request::Request;
 pub use request::RequestTimerHandle;
+pub use request_list::RequestList;
 pub use request_queue::RequestQueue;
 pub use tag_set::QueueType;
 pub use tag_set::TagSet;
