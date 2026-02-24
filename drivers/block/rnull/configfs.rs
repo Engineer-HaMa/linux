@@ -7,33 +7,19 @@ use super::{
 };
 use core::fmt::Write;
 use kernel::{
-<<<<<<< HEAD
-<<<<<<< HEAD
-    block::mq::gen_disk::{GenDisk, GenDiskBuilder},
-    configfs::{self, AttributeOperations},
-=======
-=======
     bindings,
-<<<<<<< HEAD
->>>>>>> 26e371fedd2e (block: rnull: allow specifying the home numa node)
-    block::mq::gen_disk::{
-        GenDisk,
-        GenDiskBuilder, //
-=======
     block::{
         badblocks::BadBlocks,
         mq::gen_disk::{
             GenDisk,
             GenDiskBuilder, //
         }, //
->>>>>>> 44187775780d (block: rnull: add badblocks support)
     },
     c_str,
     configfs::{
         self,
         AttributeOperations, //
     },
->>>>>>> a4ab1bb2aa94 (block: rnull: add macros to define configfs attributes)
     configfs_attrs,
     fmt,
     new_mutex,
