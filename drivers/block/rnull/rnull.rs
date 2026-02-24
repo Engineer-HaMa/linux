@@ -48,52 +48,16 @@ use kernel::{
         },
         SECTOR_SHIFT,
     },
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-    error::Result,
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-    new_mutex, pr_info,
->>>>>>> 593fa98a295d (block: rnull: add module parameters)
-=======
-    new_mutex,
-=======
-    new_mutex, new_xarray,
-=======
-=======
     error::{
         code,
         Result, //
     },
-<<<<<<< HEAD
->>>>>>> 26e371fedd2e (block: rnull: allow specifying the home numa node)
-    new_mutex,
-    new_xarray,
->>>>>>> d98e06efcdb0 (block: rnull: add `use_per_node_hctx` config option)
-    page::SafePage,
->>>>>>> f09e763ce4bb (block: rnull: add memory backing)
-=======
     ffi,
     impl_has_hr_timer,
     new_mutex,
-<<<<<<< HEAD
-    new_xarray,
-    page::{
-        SafePage,
-        PAGE_SIZE, //
-    },
->>>>>>> 646b9741be54 (block: rnull: add discard support)
-=======
     new_spinlock,
-<<<<<<< HEAD
->>>>>>> 23e614191bee (block: rnull: add volatile cache emulation)
-=======
     page::PAGE_SIZE,
->>>>>>> 8c57b8bb73b1 (block: rnull: add `virt_boundary` option)
     pr_info,
->>>>>>> 93c0555a431c (block: rust: change `queue_rq` request type to `Owned`)
     prelude::*,
     revocable::Revocable,
     str::CString,
@@ -128,11 +92,8 @@ use kernel::{
     },
     xarray::XArraySheaf, //
 };
-<<<<<<< HEAD
-=======
 use pin_init::PinInit;
 use util::*;
->>>>>>> ab9257b027ce (block: rnull: add zoned storage support)
 
 #[cfg(CONFIG_BLK_DEV_RUST_NULL_FAULT_INJECTION)]
 use kernel::fault_injection::FaultConfig;

@@ -46,15 +46,10 @@ impl<T: Operations> TagSet<T> {
         numa_node: i32,
         flags: Flags,
     ) -> impl PinInit<Self, error::Error> {
-<<<<<<< HEAD
-        let tag_set: bindings::blk_mq_tag_set = pin_init::zeroed();
-        let tag_set: Result<_> = core::mem::size_of::<RequestDataWrapper>()
-=======
         // SAFETY: `blk_mq_tag_set` only contains integers and pointers, which
         // all are allowed to be 0.
         let tag_set: bindings::blk_mq_tag_set = unsafe { core::mem::zeroed() };
         let tag_set: Result<_> = core::mem::size_of::<RequestDataWrapper<T>>()
->>>>>>> 077674c2c386 (block: rust: add `Request` private data support)
             .try_into()
             .map(|cmd_size| {
                 bindings::blk_mq_tag_set {
