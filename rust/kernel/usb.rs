@@ -18,18 +18,10 @@ use crate::{
         to_result, //
     },
     prelude::*,
-<<<<<<< HEAD
-    types::{
-        AlwaysRefCounted,
-        Opaque, //
-    },
-    ThisModule, //
-=======
     str::CStr,
     sync::aref::{AlwaysRefCounted, RefCounted},
     types::Opaque,
     ThisModule,
->>>>>>> rust: rename `AlwaysRefCounted` to `RefCounted`.
 };
 use core::{
     marker::PhantomData,

@@ -8,21 +8,13 @@ use crate::{
     bindings,
     fmt,
     prelude::*,
-<<<<<<< HEAD
-    sync::aref::ARef,
-    types::{
-        ForeignOwnable,
-        Opaque, //
-    }, //
+    sync::aref::{ARef, AlwaysRefCounted, RefCounted},
+    types::{ForeignOwnable, Opaque},
 };
 use core::{
     any::TypeId,
     marker::PhantomData,
-    ptr, //
-=======
-    sync::aref::{ARef, RefCounted},
-    types::{AlwaysRefCounted, ForeignOwnable, Opaque},
->>>>>>> rust: rename `AlwaysRefCounted` to `RefCounted`.
+    ptr,
 };
 
 pub mod property;
