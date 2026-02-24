@@ -6,7 +6,7 @@
 
 use crate::{
     bindings,
-<<<<<<< HEAD
+    error::{code::EIO, Error, Result},
     fmt,
     prelude::*,
     sync::aref::{ARef, AlwaysRefCounted, RefCounted},
@@ -16,13 +16,6 @@ use core::{
     any::TypeId,
     marker::PhantomData,
     ptr,
-=======
-    error::{code::EIO, Error, Result},
-    fmt,
-    prelude::*,
-    sync::aref::{ARef, RefCounted},
-    types::{AlwaysRefCounted, ForeignOwnable, Opaque},
->>>>>>> 8690fae961a4 (rust: device: add dma map functions)
 };
 
 pub mod property;
