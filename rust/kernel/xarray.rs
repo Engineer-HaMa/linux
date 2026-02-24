@@ -30,17 +30,24 @@ use kernel::{
         Result, //
     },
     ffi::c_void,
-<<<<<<< HEAD
     mm::sheaf::{
         KMemCache,
         SBox,
         StaticSheaf, //
     },
+    str::CStr,
+    sync::LockClassKey,
     types::{
         ForeignOwnable,
         NotThreadSafe,
         Opaque, //
     },
+};
+use core::{
+    iter,
+    marker::PhantomData,
+    pin::Pin,
+    ptr::{null_mut, NonNull},
 };
 use pin_init::{
     init,
@@ -90,19 +97,6 @@ impl kernel::mm::sheaf::KMemCacheInit<XArrayNode> for XArrayNode {
         })
     }
 }
-=======
-    str::CStr,
-    sync::LockClassKey,
-    types::{ForeignOwnable, NotThreadSafe, Opaque},
-};
-use core::{
-    iter,
-    marker::PhantomData,
-    pin::Pin,
-    ptr::{null_mut, NonNull},
-};
-use pin_init::{pin_data, pin_init, pinned_drop, PinInit};
->>>>>>> rust: xarray: fix false positive lockdep warnings
 
 /// Creates a [`XArray`] initialiser with the given name and a newly-created lock class.
 ///
