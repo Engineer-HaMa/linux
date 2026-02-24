@@ -7,16 +7,12 @@ __rust_helper int rust_helper_xa_err(void *entry)
 	return xa_err(entry);
 }
 
-<<<<<<< HEAD
-__rust_helper void rust_helper_xa_init_flags(struct xarray *xa, gfp_t flags)
+void rust_helper_xa_init_flags(struct xarray *xa, gfp_t flags)
 {
 	return xa_init_flags(xa, flags);
 }
 
-__rust_helper int rust_helper_xa_trylock(struct xarray *xa)
-=======
 int rust_helper_xa_trylock(struct xarray *xa)
->>>>>>> rust: xarray: fix false positive lockdep warnings
 {
 	return xa_trylock(xa);
 }
