@@ -101,14 +101,10 @@ unsafe impl<T: RefCounted + Sync + Send> Send for ARef<T> {}
 // example, when the reference count reaches zero and `T` is dropped.
 unsafe impl<T: RefCounted + Sync + Send> Sync for ARef<T> {}
 
-<<<<<<< HEAD
 // Even if `T` is pinned, pointers to `T` can still move.
-impl<T: AlwaysRefCounted> Unpin for ARef<T> {}
+impl<T: RefCounted> Unpin for ARef<T> {}
 
-impl<T: AlwaysRefCounted> ARef<T> {
-=======
 impl<T: RefCounted> ARef<T> {
->>>>>>> rust: rename `AlwaysRefCounted` to `RefCounted`.
     /// Creates a new instance of [`ARef`].
     ///
     /// It takes over an increment of the reference count on the underlying object.
