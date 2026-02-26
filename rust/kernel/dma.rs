@@ -558,6 +558,8 @@ impl<T: AsBytes + FromBytes, A: Allocator> CoherentAllocation<T, A> {
     /// Write a slice of data to the region starting from `offset`.
     pub fn write_slice(&self, src: &[T], offset: usize) -> Result {
         self.validate_range(offset, src.len())?;
+        // SAFETY: The range was validated above. `cpu_addr` is valid for writes
+        // within the allocated region.
         unsafe {
             core::ptr::copy_nonoverlapping(
                 src.as_ptr(),
@@ -574,6 +576,7 @@ impl<T: AsBytes + FromBytes, A: Allocator> CoherentAllocation<T, A> {
             return None;
         }
         let ptr = self.cpu_addr.as_ptr().wrapping_add(index);
+        // SAFETY: `index` is within bounds and `ptr` points to a valid `T`.
         Some(unsafe { ptr.read() })
     }
 
@@ -583,6 +586,7 @@ impl<T: AsBytes + FromBytes, A: Allocator> CoherentAllocation<T, A> {
             return None;
         }
         let ptr = self.cpu_addr.as_ptr().wrapping_add(index);
+        // SAFETY: `index` is within bounds and `ptr` points to a valid `T`.
         Some(unsafe { ptr.read_volatile() })
     }
 
@@ -595,6 +599,7 @@ impl<T: AsBytes + FromBytes, A: Allocator> CoherentAllocation<T, A> {
             return false;
         }
         let ptr = self.cpu_addr.as_ptr().wrapping_add(index);
+        // SAFETY: `index` is within bounds and `ptr` points to a valid `T`.
         unsafe { ptr.write(*value) };
         true
     }
@@ -605,7 +610,9 @@ impl<T: AsBytes + FromBytes, A: Allocator> CoherentAllocation<T, A> {
             return None;
         }
         let ptr = self.cpu_addr.as_ptr().wrapping_add(index);
+        // SAFETY: `index` is within bounds and `ptr` points to a valid `T`.
         let ret = unsafe { ptr.read() };
+        // SAFETY: Same pointer, same validity.
         unsafe { ptr.write(value) };
         Some(ret)
     }
@@ -806,7 +813,7 @@ impl<T: AsBytes + FromBytes, A: Allocator> Drop for CoherentAllocation<T, A> {
 // can be sent to another thread.
 unsafe impl<T: AsBytes + FromBytes + Send, A: Allocator> Send for CoherentAllocation<T, A> {}
 
-// TODO
+// SAFETY: DMA coherent allocations are accessible from any thread if T is Sync.
 unsafe impl<T: AsBytes + FromBytes + Sync, A: Allocator> Sync for CoherentAllocation<T, A> {}
 
 /// Reads a field of an item from an allocated region of structs.
@@ -907,6 +914,7 @@ macro_rules! dma_write {
 /// Default coherent DMA allocator using `dma_alloc_attrs` / `dma_free_attrs`.
 pub struct CoherentAllocator;
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl Allocator for CoherentAllocator {
     type AllocationData = ARef<device::Device>;
     type DataSource = ARef<device::Device>;
@@ -957,6 +965,7 @@ impl<T: AsBytes + FromBytes> Pool<T> {
     ) -> Result<Arc<Self>> {
         let t_size = core::mem::size_of::<T>();
         let size = count.checked_mul(t_size).ok_or(ENOMEM)?;
+        // SAFETY: `name` is a valid C string, `dev` is a valid device pointer.
         let ptr = unsafe {
             bindings::dma_pool_create(name.as_char_ptr(), dev.as_raw(), size, align, boundary)
         };
@@ -985,13 +994,14 @@ impl<T: AsBytes + FromBytes> Pool<T> {
         };
 
         let mut dma_handle = 0;
+        // SAFETY: `self.ptr` is a valid pool pointer.
         let ptr = unsafe { bindings::dma_pool_alloc(self.ptr, gfp, &mut dma_handle) };
         if ptr.is_null() {
             Err(ENOMEM)
         } else {
             Ok(CoherentAllocation::new_inner(
                 // SAFETY: We just checked that `ptr` is not null.
-                unsafe { NonNull::new_unchecked(ptr as *mut T) },
+                unsafe { NonNull::new_unchecked(ptr.cast::<T>()) },
                 dma_handle,
                 self.count,
                 self.ptr,
@@ -1028,7 +1038,8 @@ impl<T> Allocator for Pool<T> {
         pool: &*mut bindings::dma_pool,
         _: Attrs,
     ) {
-        unsafe { bindings::dma_pool_free(*pool, cpu_addr as _, dma_handle) };
+        // SAFETY: `pool` and `cpu_addr` are valid pointers from a prior `dma_pool_alloc`.
+        unsafe { bindings::dma_pool_free(*pool, cpu_addr.cast(), dma_handle) };
     }
 
     unsafe fn allocation_data(data: &Arc<Self>) -> *mut bindings::dma_pool {

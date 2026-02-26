@@ -23,9 +23,7 @@ Arc, Refcount,
 };
 use core::{ffi::c_void, marker::PhantomData, ops::Deref, pin::Pin, ptr::NonNull};
 
-use super::RequestQueue;
-use crate::block::bio::Bio;
-use crate::block::bio::BioIterator;
+use super::request_queue::RequestQueue;
 
 mod command;
 pub use command::Command;
@@ -93,8 +91,6 @@ impl<T: Operations> IdleRequest<T> {
     }
 }
 
-// SAFETY: The `release` implementation leaks the `IdleRequest`, which is a valid state for a
-// [`Request`] with refcount 0.
 impl<T: Operations> Ownable for IdleRequest<T> {
     unsafe fn release(&mut self) {}
 }
@@ -370,12 +366,14 @@ impl<T: Operations> Request<T> {
 
     /// Returns the tag associated with this request
     pub fn tag(&self) -> i32 {
-        unsafe { (*self.0.get()).tag }
+        // SAFETY: By type invariant of `Self`, `self.0` is valid and live.
+        unsafe { (*self.0 .0.get()).tag }
     }
 
     /// Returns the number of physical contiguous segments in the payload of this request
     pub fn nr_phys_segments(&self) -> u16 {
-        unsafe { bindings::blk_rq_nr_phys_segments(self.0.get()) }
+        // SAFETY: By type invariant of `Self`, `self.0` is valid and live.
+        unsafe { bindings::blk_rq_nr_phys_segments(self.0 .0.get()) }
     }
 
     /// Returns the number of elements used.
@@ -387,9 +385,11 @@ impl<T: Operations> Request<T> {
 
         // Populate the scatter-gather list.
         let mut last_sg = core::ptr::null_mut();
+        // SAFETY: By type invariant of `Self`, `self.0` is valid. `sglist` and
+        // `last_sg` are valid pointers.
         let count = unsafe {
             bindings::__blk_rq_map_sg(
-                self.0.get(),
+                self.0 .0.get(),
                 &mut sglist[0],
                 &mut last_sg,
             )
@@ -397,34 +397,37 @@ impl<T: Operations> Request<T> {
         if count < 0 {
             Err(crate::error::code::ENOMEM)
         } else {
-            Ok(count as _)
+            Ok(count as u32)
         }
     }
 
     /// Returns the number of bytes in the payload of this request
     pub fn payload_bytes(&self) -> u32 {
-        unsafe { bindings::blk_rq_payload_bytes(self.0.get()) }
+        // SAFETY: By type invariant of `Self`, `self.0` is valid and live.
+        unsafe { bindings::blk_rq_payload_bytes(self.0 .0.get()) }
     }
 
+    /// Try to obtain an additional shared reference from an existing shared reference.
     pub fn try_to_owned_ref(&self) -> Option<ARef<Self>> {
-        // Load acquire to sync with store release of URef being destroyed
-        // (prevent mutable access overlapping) this load.
-        // Store relaxed as no other operations need to happen strictly
-        // before or after the increment.
-        self.wrapper_ref()
-            .refcount
-            .as_atomic()
-            .fetch_update(Ordering::Relaxed, Ordering::Acquire, |x| {
-                if x >= 2 {
-                    Some(x + 1)
-                } else {
-                    None
+        let atomic = self.wrapper_ref().refcount.as_atomic();
+        let mut current = atomic.load(ordering::Acquire);
+        loop {
+            if current < 2 {
+                return None;
+            }
+            match atomic.cmpxchg(current, current + 1, ordering::Relaxed) {
+                Ok(_) => {
+                    // SAFETY: We verified refcount >= 2 and incremented it,
+                    // so the request is shared and we can create a new ARef.
+                    return Some(unsafe {
+                        ARef::from_raw(NonNull::new_unchecked(
+                            core::ptr::from_ref::<Self>(self).cast_mut(),
+                        ))
+                    });
                 }
-            })
-            .ok()
-            .map(|_| unsafe {
-                ARef::from_raw(NonNull::new_unchecked((self as *const Self).cast_mut()))
-            })
+                Err(actual) => current = actual,
+            }
+        }
     }
 }
 
@@ -555,8 +558,6 @@ impl<T: Operations> Owned<Request<T>> {
     }
 }
 
-// SAFETY: The `release` implementation frees the underlying request according to the reference
-// counting scheme for `Request`.
 impl<T: Operations> Ownable for Request<T> {
     unsafe fn release(&mut self) {
         let this = NonNull::from(self);
@@ -756,13 +757,16 @@ where
     }
 }
 
-pub struct RequestQueue<T: Operations> {
+/// An owned request queue with an associated tagset.
+pub struct OwnedRequestQueue<T: Operations> {
     ptr: *mut bindings::request_queue,
-    tagset: Arc<TagSet<T>>,
+    _tagset: Arc<TagSet<T>>,
 }
 
-impl<T: Operations> RequestQueue<T> {
+impl<T: Operations> OwnedRequestQueue<T> {
+    /// Allocate a new request queue.
     pub fn try_new(tagset: Arc<TagSet<T>>, queue_data: T::QueueData) -> Result<Self> {
+        // SAFETY: `tagset.raw_tag_set()` returns a valid tag set pointer.
         let mq = from_err_ptr(unsafe {
             bindings::blk_mq_alloc_queue(
                 tagset.raw_tag_set(),
@@ -770,18 +774,21 @@ impl<T: Operations> RequestQueue<T> {
                 core::ptr::null_mut(),
             )
         })?;
-        unsafe { (*mq).queuedata = queue_data.into_foreign() as _ };
-        Ok(Self { ptr: mq, tagset })
+        // SAFETY: `mq` is a valid request queue pointer returned by `blk_mq_alloc_queue`.
+        unsafe { (*mq).queuedata = queue_data.into_foreign().cast() };
+        Ok(Self { ptr: mq, _tagset: tagset })
     }
 
+    /// Allocate a synchronous request for this queue.
     pub fn alloc_sync_request(&self, op: u32) -> Result<SyncRequest<T>> {
+        // SAFETY: `self.ptr` is a valid request queue pointer.
         let rq = from_err_ptr(unsafe { bindings::blk_mq_alloc_request(self.ptr, op, 0) })?;
         // SAFETY: `rq` is valid and will be owned by new `SyncRequest`.
         Ok(unsafe { SyncRequest::from_ptr(rq) })
     }
 }
 
-impl<T: Operations> Drop for RequestQueue<T> {
+impl<T: Operations> Drop for OwnedRequestQueue<T> {
     fn drop(&mut self) {
         // TODO: Free queue, unless it has been adopted by a disk, for example.
     }
@@ -808,7 +815,9 @@ impl<T: Operations> SyncRequest<T> {
 
     /// Submits the request for execution by the request queue to which it belongs.
     pub fn execute(&self, at_head: bool) -> Result {
-        let status = unsafe { bindings::blk_execute_rq(self.ptr, at_head as _) };
+        // SAFETY: `self.ptr` is a valid request pointer.
+        let status = unsafe { bindings::blk_execute_rq(self.ptr, at_head) };
+        // SAFETY: `status` is a valid blk_status_t.
         let ret = unsafe { bindings::blk_status_to_errno(status) };
         if ret < 0 {
             Err(Error::from_errno(ret))
@@ -819,17 +828,21 @@ impl<T: Operations> SyncRequest<T> {
 
     /// Returns the tag associated with this synchronous request.
     pub fn tag(&self) -> i32 {
+        // SAFETY: `self.ptr` is a valid request pointer.
         unsafe { (*self.ptr).tag }
     }
 
     /// Returns the per-request data associated with this synchronous request.
     pub fn data(&self) -> &T::RequestData {
-        unsafe { &*(bindings::blk_mq_rq_to_pdu(self.ptr) as *const T::RequestData) }
+        // SAFETY: `self.ptr` is a valid request and `blk_mq_rq_to_pdu` returns
+        // a valid pointer to the private data area.
+        unsafe { &*bindings::blk_mq_rq_to_pdu(self.ptr).cast::<T::RequestData>() }
     }
 }
 
 impl<T: Operations> Drop for SyncRequest<T> {
     fn drop(&mut self) {
+        // SAFETY: `self.ptr` is a valid request that was allocated by `blk_mq_alloc_request`.
         unsafe { bindings::blk_mq_free_request(self.ptr) };
     }
 }
