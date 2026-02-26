@@ -540,11 +540,10 @@ impl SafePage {
     }
 }
 
-// SAFETY: `Owned<SafePage>` objects returned by SafePage::alloc_page() follow the requirements of
-// the Ownable abstraction.
-unsafe impl Ownable for SafePage {
+impl Ownable for SafePage {
     #[inline]
-    unsafe fn release(this: NonNull<Self>) {
+    unsafe fn release(&mut self) {
+        let this = NonNull::from(self);
         // SAFETY: By the type invariants, we have ownership of the page and can free it. Since
         // `SafePage` and `Page` are transparent, we can cast the raw pointer directly.
         unsafe { bindings::__free_pages(this.cast().as_ptr(), 0) };

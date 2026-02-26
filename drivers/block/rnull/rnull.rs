@@ -331,17 +331,17 @@ struct NullBlkOptions<'a> {
     shared_tags: bool,
     hw_queue_depth: u32,
     zoned: bool,
-    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(unused_variables))]
+    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(dead_code))]
     zone_size_mib: u32,
-    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(unused_variables))]
+    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(dead_code))]
     zone_capacity_mib: u32,
-    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(unused_variables))]
+    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(dead_code))]
     zone_nr_conv: u32,
-    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(unused_variables))]
+    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(dead_code))]
     zone_max_open: u32,
-    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(unused_variables))]
+    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(dead_code))]
     zone_max_active: u32,
-    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(unused_variables))]
+    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(dead_code))]
     zone_append_max_sectors: u32,
     forced_unit_access: bool,
     #[cfg(CONFIG_BLK_DEV_RUST_NULL_FAULT_INJECTION)]
@@ -410,12 +410,30 @@ impl NullBlkDevice {
             shared_tags,
             hw_queue_depth,
             zoned,
+            #[cfg(CONFIG_BLK_DEV_ZONED)]
             zone_size_mib,
+            #[cfg(not(CONFIG_BLK_DEV_ZONED))]
+            zone_size_mib: _,
+            #[cfg(CONFIG_BLK_DEV_ZONED)]
             zone_capacity_mib,
+            #[cfg(not(CONFIG_BLK_DEV_ZONED))]
+            zone_capacity_mib: _,
+            #[cfg(CONFIG_BLK_DEV_ZONED)]
             zone_nr_conv,
+            #[cfg(not(CONFIG_BLK_DEV_ZONED))]
+            zone_nr_conv: _,
+            #[cfg(CONFIG_BLK_DEV_ZONED)]
             zone_max_open,
+            #[cfg(not(CONFIG_BLK_DEV_ZONED))]
+            zone_max_open: _,
+            #[cfg(CONFIG_BLK_DEV_ZONED)]
             zone_max_active,
+            #[cfg(not(CONFIG_BLK_DEV_ZONED))]
+            zone_max_active: _,
+            #[cfg(CONFIG_BLK_DEV_ZONED)]
             zone_append_max_sectors,
+            #[cfg(not(CONFIG_BLK_DEV_ZONED))]
+            zone_append_max_sectors: _,
             forced_unit_access,
 
             #[cfg(CONFIG_BLK_DEV_RUST_NULL_FAULT_INJECTION)]
@@ -628,7 +646,7 @@ impl NullBlkDevice {
             let page_offset = (sector & u64::from(block::SECTOR_MASK)) << block::SECTOR_SHIFT;
 
             sector += segment.copy_to_page_limit(
-                page.page_mut().get_pin_mut(),
+                page.page_mut().as_pin_mut(),
                 page_offset as usize,
                 self.block_size_bytes.try_into()?,
             ) as u64
