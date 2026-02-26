@@ -179,9 +179,9 @@ impl<'a, 'b, 'c> DiskStorageAccess<'a, 'b, 'c> {
                     let mut offset = 0;
                     for _ in 0..PAGE_SECTORS {
                         src.page_mut()
-                            .get_pin_mut()
+                            .as_pin_mut()
                             .copy_to_page(
-                                disk_entry.page_mut().get_pin_mut(),
+                                disk_entry.page_mut().as_pin_mut(),
                                 offset,
                                 block::SECTOR_SIZE as usize,
                             )
