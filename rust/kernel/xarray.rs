@@ -43,12 +43,6 @@ use kernel::{
         Opaque, //
     },
 };
-use core::{
-    iter,
-    marker::PhantomData,
-    pin::Pin,
-    ptr::{null_mut, NonNull},
-};
 use pin_init::{
     init,
     pin_data,

@@ -91,8 +91,8 @@ impl<T: Operations> IdleRequest<T> {
 
 // SAFETY: The `release` implementation leaks the `IdleRequest`, which is a valid state for a
 // [`Request`] with refcount 0.
-unsafe impl<T: Operations> Ownable for IdleRequest<T> {
-    unsafe fn release(_this: NonNull<Self>) {}
+impl<T: Operations> Ownable for IdleRequest<T> {
+    unsafe fn release(&mut self) {}
 }
 
 impl<T: Operations> Deref for IdleRequest<T> {
@@ -493,8 +493,9 @@ impl<T: Operations> Owned<Request<T>> {
 
 // SAFETY: The `release` implementation frees the underlying request according to the reference
 // counting scheme for `Request`.
-unsafe impl<T: Operations> Ownable for Request<T> {
-    unsafe fn release(this: NonNull<Self>) {
+impl<T: Operations> Ownable for Request<T> {
+    unsafe fn release(&mut self) {
+        let this = NonNull::from(self);
         // SAFETY: The safety requirements of this function guarantee that `this`
         // is valid for read.
         let wrapper_ptr = unsafe { Self::wrapper_ptr(this.as_ptr()).as_ptr() };
