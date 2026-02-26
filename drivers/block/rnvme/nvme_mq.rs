@@ -6,13 +6,13 @@ use super::NvmeCommand;
 use super::NvmeData;
 use super::NvmeNamespace;
 use super::NvmeRequest;
-use core;
 use core::cell::SyncUnsafeCell;
 use core::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, Ordering};
 use kernel::alloc::flags;
 use kernel::alloc::KBox;
 use kernel::bindings;
 use kernel::block::mq;
+use kernel::block::mq::TagSetDataHandle;
 use kernel::error::code::*;
 use kernel::pr_info;
 use kernel::prelude::*;
@@ -20,7 +20,6 @@ use kernel::sync::Arc;
 use kernel::sync::ArcBorrow;
 use kernel::types::ARef;
 use kernel::types::AtomicOptionalBoxedPtr;
-use kernel::types::BorrowIterator;
 use kernel::types::ForeignOwnable;
 use kernel::types::OwnableRefCounted;
 use kernel::types::Owned;
@@ -38,8 +37,9 @@ impl mq::Operations for AdminQueueOperations {
     type TagSetData = Arc<NvmeData>;
 
     fn new_request_data(
-        tagset_data: <Self::TagSetData as ForeignOwnable>::Borrowed<'_>,
-    ) -> impl PinInit<Self::RequestData> {
+        tagset_data: &TagSetDataHandle<Self::TagSetData>,
+    ) -> impl PinInit<Self::RequestData> + 'static {
+        let tagset_data = tagset_data.borrow();
         let device = tagset_data.pci_dev.as_ref().into();
         let dma_pool = tagset_data.dma_pool.clone();
         pin_init!(NvmeRequest {
@@ -98,8 +98,9 @@ impl mq::Operations for IoQueueOperations {
     type TagSetData = Arc<NvmeData>;
 
     fn new_request_data(
-        tagset_data: <Self::TagSetData as ForeignOwnable>::Borrowed<'_>,
-    ) -> impl PinInit<Self::RequestData> {
+        tagset_data: &TagSetDataHandle<Self::TagSetData>,
+    ) -> impl PinInit<Self::RequestData> + 'static {
+        let tagset_data = tagset_data.borrow();
         let device = tagset_data.pci_dev.as_ref().into();
         let dma_pool = tagset_data.dma_pool.clone();
         pin_init!(NvmeRequest {
@@ -144,11 +145,15 @@ impl mq::Operations for IoQueueOperations {
         io_queue.write_sq_db(true);
     }
 
-    fn poll(queue: ArcBorrow<'_, NvmeQueue<Self>>) -> bool {
-        queue.process_completions()
+    fn poll(
+        io_queue: ArcBorrow<'_, NvmeQueue<Self>>,
+        _ns: &NvmeNamespace,
+        _batch: &mut mq::IoCompletionBatch<Self>,
+    ) -> Result<bool> {
+        Ok(io_queue.process_completions())
     }
 
-    fn map_queues(tag_set: &mq::TagSet<Self>) {
+    fn map_queues(tag_set: Pin<&mut mq::TagSet<Self>>) {
         // TODO: Build abstractions for these unsafe calls
         unsafe {
             let device_data = <Self::TagSetData as ForeignOwnable>::borrow(
@@ -197,18 +202,18 @@ where
     T: mq::Operations<RequestData = NvmeRequest> + Send,
 {
     match rq.command() {
-        bindings::req_op_REQ_OP_DRV_IN | bindings::req_op_REQ_OP_DRV_OUT => {
+        mq::Command::DriverIn | mq::Command::DriverOut => {
             io_queue.submit_command(unsafe { &*rq.data_ref().cmd.get() }, is_last);
             Ok(())
         }
-        bindings::req_op_REQ_OP_FLUSH => {
+        mq::Command::Flush => {
             let mut cmd = NvmeCommand::new_flush(ns.id);
             cmd.common.command_id = rq.tag() as u16;
             io_queue.submit_command(&cmd, is_last);
             Ok(())
         }
-        bindings::req_op_REQ_OP_WRITE | bindings::req_op_REQ_OP_READ => {
-            let (direction, opcode) = if rq.command() == bindings::req_op_REQ_OP_READ {
+        mq::Command::Write | mq::Command::Read => {
+            let (direction, opcode) = if rq.command() == mq::Command::Read {
                 (
                     bindings::dma_data_direction_DMA_FROM_DEVICE as u32,
                     NvmeOpcode::read,
@@ -303,9 +308,9 @@ where
     T: mq::Operations<RequestData = NvmeRequest> + Send,
 {
     match rq.command() {
-        bindings::req_op_REQ_OP_DRV_IN
-        | bindings::req_op_REQ_OP_DRV_OUT
-        | bindings::req_op_REQ_OP_FLUSH => {
+        mq::Command::DriverIn
+        | mq::Command::DriverOut
+        | mq::Command::Flush => {
             // We just complete right away if flush completes.
             OwnableRefCounted::try_from_shared(rq)
                 .map_err(|_e| kernel::error::code::EIO)

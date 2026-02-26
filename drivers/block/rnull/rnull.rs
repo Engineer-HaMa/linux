@@ -1015,7 +1015,9 @@ impl Operations for NullBlkDevice {
     type TagSetData = KBox<NullBlkTagsetData>;
     type HwData = Pin<KBox<SpinLock<HwQueueContext>>>;
 
-    fn new_request_data() -> impl PinInit<Self::RequestData> {
+    fn new_request_data(
+        _tagset_data: &kernel::block::mq::TagSetDataHandle<Self::TagSetData>,
+    ) -> impl PinInit<Self::RequestData> + 'static {
         pin_init!(Pdu {
             timer <- HrTimer::new(),
             error: Atomic::new(0),

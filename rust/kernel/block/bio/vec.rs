@@ -274,7 +274,7 @@ impl<'a> BioSegmentIterator<'a> {
         // SAFETY: By the safety requirement of this function and the type
         // invariant of `Self`, `self.iter.bi_idx` indexes into a valid
         // `bio_vec`
-        unsafe { self.bio.io_vec().offset(self.iter.bi_idx as isize).as_ref() }
+        unsafe { &*self.bio.io_vec().as_ptr().wrapping_add(self.iter.bi_idx as usize) }
     }
 
     /// Get the  as u32currently indexed page, indexing into pages of order >= 0.

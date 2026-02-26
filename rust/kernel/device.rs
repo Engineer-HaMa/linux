@@ -491,7 +491,8 @@ impl<Ctx: DeviceContext> Device<Ctx> {
     /// Set the DMA mask for this device.
     pub fn dma_set_mask(&self, mask: u64) -> Result {
         let dev = self.as_raw();
-        let ret = unsafe { bindings::dma_set_mask(dev as _, mask) };
+        // SAFETY: `dev` is a valid device pointer by type invariant.
+        let ret = unsafe { bindings::dma_set_mask(dev.cast(), mask) };
         if ret != 0 {
             Err(Error::from_errno(ret))
         } else {
@@ -502,7 +503,8 @@ impl<Ctx: DeviceContext> Device<Ctx> {
     /// Set the coherent DMA mask for this device.
     pub fn dma_set_coherent_mask(&self, mask: u64) -> Result {
         let dev = self.as_raw();
-        let ret = unsafe { bindings::dma_set_coherent_mask(dev as _, mask) };
+        // SAFETY: `dev` is a valid device pointer by type invariant.
+        let ret = unsafe { bindings::dma_set_coherent_mask(dev.cast(), mask) };
         if ret != 0 {
             Err(Error::from_errno(ret))
         } else {
@@ -514,12 +516,13 @@ impl<Ctx: DeviceContext> Device<Ctx> {
     pub fn dma_map_sg(&self, sglist: &mut [bindings::scatterlist], dir: u32) -> Result {
         let dev = self.as_raw();
         let count = sglist.len().try_into()?;
+        // SAFETY: `dev` is valid by type invariant. `sglist` is a valid mutable slice.
         let ret = unsafe {
             bindings::dma_map_sg_attrs(
                 dev,
                 &mut sglist[0],
                 count,
-                dir as _,
+                dir as i32,
                 bindings::DMA_ATTR_NO_WARN.try_into()?,
             )
         };
@@ -533,8 +536,9 @@ impl<Ctx: DeviceContext> Device<Ctx> {
     /// Unmap a scatter-gather list from DMA.
     pub fn dma_unmap_sg(&self, sglist: &mut [bindings::scatterlist], dir: u32) {
         let dev = self.as_raw();
-        let count = sglist.len() as _;
-        unsafe { bindings::dma_unmap_sg_attrs(dev, &mut sglist[0], count, dir as _, 0) };
+        let count = sglist.len() as i32;
+        // SAFETY: `dev` is valid by type invariant. `sglist` was previously mapped.
+        unsafe { bindings::dma_unmap_sg_attrs(dev, &mut sglist[0], count, dir as i32, 0) };
     }
 }
 
