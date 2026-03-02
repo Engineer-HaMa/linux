@@ -469,7 +469,7 @@ configfs_simple_field!(
     9,
     home_node,
     i32,
-    check (|value| {
+    check(|value| {
         if value == 0 || value >= kernel::num_online_nodes().try_into()? {
             Err(kernel::error::code::EINVAL)
         } else {

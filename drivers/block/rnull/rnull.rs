@@ -413,27 +413,27 @@ impl NullBlkDevice {
             #[cfg(CONFIG_BLK_DEV_ZONED)]
             zone_size_mib,
             #[cfg(not(CONFIG_BLK_DEV_ZONED))]
-            zone_size_mib: _,
+                zone_size_mib: _,
             #[cfg(CONFIG_BLK_DEV_ZONED)]
             zone_capacity_mib,
             #[cfg(not(CONFIG_BLK_DEV_ZONED))]
-            zone_capacity_mib: _,
+                zone_capacity_mib: _,
             #[cfg(CONFIG_BLK_DEV_ZONED)]
             zone_nr_conv,
             #[cfg(not(CONFIG_BLK_DEV_ZONED))]
-            zone_nr_conv: _,
+                zone_nr_conv: _,
             #[cfg(CONFIG_BLK_DEV_ZONED)]
             zone_max_open,
             #[cfg(not(CONFIG_BLK_DEV_ZONED))]
-            zone_max_open: _,
+                zone_max_open: _,
             #[cfg(CONFIG_BLK_DEV_ZONED)]
             zone_max_active,
             #[cfg(not(CONFIG_BLK_DEV_ZONED))]
-            zone_max_active: _,
+                zone_max_active: _,
             #[cfg(CONFIG_BLK_DEV_ZONED)]
             zone_append_max_sectors,
             #[cfg(not(CONFIG_BLK_DEV_ZONED))]
-            zone_append_max_sectors: _,
+                zone_append_max_sectors: _,
             forced_unit_access,
 
             #[cfg(CONFIG_BLK_DEV_RUST_NULL_FAULT_INJECTION)]
@@ -831,9 +831,7 @@ impl NullBlkDevice {
                 & 1
                 == 0
             {
-                return Err(QueueRequestError {
-                    request: rq,
-                });
+                return Err(QueueRequestError { request: rq });
             } else {
                 rq.requeue(true);
                 return Ok(());
