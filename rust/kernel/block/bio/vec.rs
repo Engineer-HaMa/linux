@@ -201,7 +201,7 @@ impl Segment<'_> {
 
     /// Returns the page for this segment.
     pub fn page(&self) -> *mut bindings::page {
-       self.bio_vec.bv_page
+        self.bio_vec.bv_page
     }
 }
 
@@ -274,7 +274,13 @@ impl<'a> BioSegmentIterator<'a> {
         // SAFETY: By the safety requirement of this function and the type
         // invariant of `Self`, `self.iter.bi_idx` indexes into a valid
         // `bio_vec`
-        unsafe { &*self.bio.io_vec().as_ptr().wrapping_add(self.iter.bi_idx as usize) }
+        unsafe {
+            &*self
+                .bio
+                .io_vec()
+                .as_ptr()
+                .wrapping_add(self.iter.bi_idx as usize)
+        }
     }
 
     /// Get the  as u32currently indexed page, indexing into pages of order >= 0.

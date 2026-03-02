@@ -12,11 +12,7 @@ use crate::{
     sync::aref::{ARef, AlwaysRefCounted, RefCounted},
     types::{ForeignOwnable, Opaque},
 };
-use core::{
-    any::TypeId,
-    marker::PhantomData,
-    ptr,
-};
+use core::{any::TypeId, marker::PhantomData, ptr};
 
 pub mod property;
 

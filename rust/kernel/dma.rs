@@ -473,7 +473,6 @@ impl<T: AsBytes + FromBytes> CoherentAllocation<T> {
     ) -> Result<CoherentAllocation<T>> {
         CoherentAllocation::alloc_attrs(dev, count, gfp_flags, Attrs(0))
     }
-
 }
 
 impl<T: AsBytes + FromBytes, A: Allocator> CoherentAllocation<T, A> {

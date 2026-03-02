@@ -308,9 +308,7 @@ where
     T: mq::Operations<RequestData = NvmeRequest> + Send,
 {
     match rq.command() {
-        mq::Command::DriverIn
-        | mq::Command::DriverOut
-        | mq::Command::Flush => {
+        mq::Command::DriverIn | mq::Command::DriverOut | mq::Command::Flush => {
             // We just complete right away if flush completes.
             OwnableRefCounted::try_from_shared(rq)
                 .map_err(|_e| kernel::error::code::EIO)

@@ -14,7 +14,7 @@ use crate::{
     sync::{
         aref::{ARef, RefCounted},
         atomic::ordering,
-Arc, Refcount,
+        Arc, Refcount,
     },
     time::hrtimer::{
         HasHrTimer, HrTimer, HrTimerCallback, HrTimerHandle, HrTimerMode, HrTimerPointer,
@@ -195,7 +195,6 @@ impl<T: Operations> RequestInner<T> {
     }
 }
 
-
 /// A wrapper around a blk-mq [`struct request`]. This represents an IO request.
 ///
 /// # Implementation details
@@ -357,7 +356,7 @@ impl<T: Operations> Request<T> {
         &self.wrapper_ref().data
     }
 
-/// Set the target sector for the request.
+    /// Set the target sector for the request.
     #[inline(always)]
     pub fn set_sector(self: Pin<&mut Self>, sector: u64) {
         // SAFETY: By type invariant of `Self`, `self.0` is valid and live.
@@ -387,13 +386,8 @@ impl<T: Operations> Request<T> {
         let mut last_sg = core::ptr::null_mut();
         // SAFETY: By type invariant of `Self`, `self.0` is valid. `sglist` and
         // `last_sg` are valid pointers.
-        let count = unsafe {
-            bindings::__blk_rq_map_sg(
-                self.0 .0.get(),
-                &mut sglist[0],
-                &mut last_sg,
-            )
-        };
+        let count =
+            unsafe { bindings::__blk_rq_map_sg(self.0 .0.get(), &mut sglist[0], &mut last_sg) };
         if count < 0 {
             Err(crate::error::code::ENOMEM)
         } else {
@@ -776,7 +770,10 @@ impl<T: Operations> OwnedRequestQueue<T> {
         })?;
         // SAFETY: `mq` is a valid request queue pointer returned by `blk_mq_alloc_queue`.
         unsafe { (*mq).queuedata = queue_data.into_foreign().cast() };
-        Ok(Self { ptr: mq, _tagset: tagset })
+        Ok(Self {
+            ptr: mq,
+            _tagset: tagset,
+        })
     }
 
     /// Allocate a synchronous request for this queue.

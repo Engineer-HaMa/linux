@@ -463,7 +463,9 @@ pub const NotThreadSafe: NotThreadSafe = PhantomData;
 /// collection/
 pub trait BorrowIterator {
     /// The type of elements being iterated over.
-    type Item<'a> where Self: 'a;
+    type Item<'a>
+    where
+        Self: 'a;
 
     /// Advances the iterator and raturns the next value.
     ///
