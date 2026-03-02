@@ -6,8 +6,7 @@
 //! C header: [`include/linux/usb.h`](srctree/include/linux/usb.h)
 
 use crate::{
-    bindings,
-    device,
+    bindings, device,
     device_id::{
         RawDeviceId,
         RawDeviceIdIndex, //

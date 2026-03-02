@@ -5,17 +5,12 @@
 //! C header: [`include/linux/device.h`](srctree/include/linux/device.h)
 
 use crate::{
-    bindings,
-    fmt,
+    bindings, fmt,
     prelude::*,
     sync::aref::{ARef, AlwaysRefCounted, RefCounted},
     types::{ForeignOwnable, Opaque},
 };
-use core::{
-    any::TypeId,
-    marker::PhantomData,
-    ptr,
-};
+use core::{any::TypeId, marker::PhantomData, ptr};
 
 pub mod property;
 
