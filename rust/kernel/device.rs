@@ -6,6 +6,7 @@
 
 use crate::{
     bindings,
+    error::{Error, Result},
     fmt,
     prelude::*,
     sync::aref::{
@@ -443,6 +444,26 @@ impl<Ctx: DeviceContext> Device<Ctx> {
         // SAFETY: By its type invariant `self.as_raw()` is a valid pointer to a `struct device`.
         // The returned string is valid for the lifetime of the device.
         unsafe { CStr::from_char_ptr(bindings::dev_name(self.as_raw())) }
+    }
+
+    pub fn dma_set_mask(&self, mask: u64) -> Result {
+        let dev = self.as_raw();
+        let ret = unsafe { bindings::dma_set_mask(dev as _, mask) };
+        if ret != 0 {
+            Err(Error::from_errno(ret))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn dma_set_coherent_mask(&self, mask: u64) -> Result {
+        let dev = self.as_raw();
+        let ret = unsafe { bindings::dma_set_coherent_mask(dev as _, mask) };
+        if ret != 0 {
+            Err(Error::from_errno(ret))
+        } else {
+            Ok(())
+        }
     }
 }
 

@@ -227,3 +227,28 @@ impl_asbytes! {
     {<T: AsBytes>} [T],
     {<T: AsBytes, const N: usize>} [T; N],
 }
+
+/// Implements the kernel [`FromBytes`] + [`AsBytes`] traits for a type that already derives
+/// `zerocopy::{FromBytes, IntoBytes, Immutable}` (which subsume their safety contracts), so it
+/// satisfies the DMA-coherent bounds without a hand-audited `unsafe impl`. Fails to compile unless
+/// those derives are present.
+#[macro_export]
+macro_rules! impl_transmute_via_zerocopy {
+    ($t:ty) => {
+        const _: () = {
+            // Compile-time proof that `$t` carries the zerocopy byte-safety bounds; referencing the
+            // item forces the check without a dead function.
+            fn assert_zerocopy<
+                T: ::zerocopy::FromBytes + ::zerocopy::IntoBytes + ::zerocopy::Immutable,
+            >() {
+            }
+            let _ = assert_zerocopy::<$t>;
+        };
+
+        // SAFETY: zerocopy `FromBytes` + `Immutable` is the kernel `FromBytes` contract.
+        unsafe impl $crate::transmute::FromBytes for $t {}
+
+        // SAFETY: zerocopy `IntoBytes` + `Immutable` is the kernel `AsBytes` contract.
+        unsafe impl $crate::transmute::AsBytes for $t {}
+    };
+}
