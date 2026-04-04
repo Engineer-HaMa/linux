@@ -35,7 +35,7 @@ use kernel::{
         SBox,
         StaticSheaf, //
     },
-    str::CStr,
+    str::{CStr, CStrExt as _},
     sync::LockClassKey,
     types::{
         ForeignOwnable,
@@ -198,7 +198,7 @@ impl<T: ForeignOwnable> XArray<T> {
             xa <- Opaque::ffi_init(|xa: *mut bindings::xarray| unsafe {
                 bindings::__spin_lock_init(
                     &raw mut (*xa).xa_lock,
-                    name.as_ptr().cast(),
+                    name.as_char_ptr().cast(),
                     key.as_ptr(),
                 );
                 (*xa).xa_flags = flags;

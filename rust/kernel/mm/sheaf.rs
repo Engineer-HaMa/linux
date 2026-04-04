@@ -240,7 +240,7 @@ impl<T: KMemCacheInit<T>> KMemCacheHandle<T> {
         // and the size of `T` has been validated to fit in a `c_uint`.
         let ptr = unsafe {
             bindings::__kmem_cache_create_args(
-                name.as_ptr().cast::<u8>(),
+                name.as_char_ptr().cast::<u8>(),
                 core::mem::size_of::<T>().try_into()?,
                 &mut args,
                 flags,

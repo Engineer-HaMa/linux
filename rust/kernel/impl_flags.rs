@@ -257,14 +257,6 @@ macro_rules! impl_flags {
             }
         }
 
-        impl ::core::ops::BitXor<$flag> for $flags {
-            type Output = Self;
-            #[inline]
-            fn bitxor(self, rhs: $flag) -> Self::Output {
-                self ^ Self::from(rhs)
-            }
-        }
-
         impl ::core::ops::BitOr<$flag> for $ty {
             type Output = Self;
 
