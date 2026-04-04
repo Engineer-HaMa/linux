@@ -75,6 +75,7 @@ unsafe impl<T> ProjectIndex<[T]> for usize {
     type Output = T;
 
     #[inline(always)]
+    #[allow(clippy::incompatible_msrv)]
     fn get(self, slice: *mut [T]) -> Option<*mut T> {
         if self >= slice.len() {
             None
@@ -90,6 +91,7 @@ unsafe impl<T> ProjectIndex<[T]> for core::ops::Range<usize> {
     type Output = [T];
 
     #[inline(always)]
+    #[allow(clippy::incompatible_msrv)]
     fn get(self, slice: *mut [T]) -> Option<*mut [T]> {
         let new_len = self.end.checked_sub(self.start)?;
         if self.end > slice.len() {
@@ -117,6 +119,7 @@ unsafe impl<T> ProjectIndex<[T]> for core::ops::RangeFrom<usize> {
     type Output = [T];
 
     #[inline(always)]
+    #[allow(clippy::incompatible_msrv)]
     fn get(self, slice: *mut [T]) -> Option<*mut [T]> {
         (self.start..slice.len()).get(slice)
     }

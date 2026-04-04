@@ -319,10 +319,7 @@ where
         AllocError: Into<E>,
         E2: Into<E>,
     {
-        let mut buffer = match super::Vec::<T, A>::with_capacity(len, flags) {
-            Ok(buffer) => buffer,
-            Err(err) => return Err(err.into()),
-        };
+        let mut buffer = super::Vec::<T, A>::with_capacity(len, flags).map_err(|err| err.into())?;
         for i in 0..len {
             let ptr = buffer.spare_capacity_mut().as_mut_ptr().cast();
             // SAFETY:
