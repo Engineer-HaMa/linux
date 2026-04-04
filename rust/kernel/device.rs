@@ -6,6 +6,7 @@
 
 use crate::{
     bindings,
+    error::{code::EIO, Error, Result},
     fmt,
     prelude::*,
     sync::aref::{
@@ -503,6 +504,51 @@ impl<Ctx: DeviceContext> Device<Ctx> {
         // SAFETY: By its type invariant `self.as_raw()` is a valid pointer to a `struct device`.
         // The returned string is valid for the lifetime of the device.
         unsafe { CStr::from_char_ptr(bindings::dev_name(self.as_raw())) }
+    }
+
+    pub fn dma_set_mask(&self, mask: u64) -> Result {
+        let dev = self.as_raw();
+        let ret = unsafe { bindings::dma_set_mask(dev as _, mask) };
+        if ret != 0 {
+            Err(Error::from_errno(ret))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn dma_set_coherent_mask(&self, mask: u64) -> Result {
+        let dev = self.as_raw();
+        let ret = unsafe { bindings::dma_set_coherent_mask(dev as _, mask) };
+        if ret != 0 {
+            Err(Error::from_errno(ret))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn dma_map_sg(&self, sglist: &mut [bindings::scatterlist], dir: u32) -> Result {
+        let dev = self.as_raw();
+        let count = sglist.len().try_into()?;
+        let ret = unsafe {
+            bindings::dma_map_sg_attrs(
+                dev,
+                &mut sglist[0],
+                count,
+                dir,
+                bindings::DMA_ATTR_NO_WARN.try_into()?,
+            )
+        };
+        // TODO: It may map fewer than what was requested. What happens then?
+        if ret == 0 {
+            return Err(EIO);
+        }
+        Ok(())
+    }
+
+    pub fn dma_unmap_sg(&self, sglist: &mut [bindings::scatterlist], dir: u32) {
+        let dev = self.as_raw();
+        let count = sglist.len() as _;
+        unsafe { bindings::dma_unmap_sg_attrs(dev, &mut sglist[0], count, dir, 0) };
     }
 }
 
