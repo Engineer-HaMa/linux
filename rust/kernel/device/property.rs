@@ -14,7 +14,7 @@ use crate::{
     fmt,
     prelude::*,
     str::{CStr, CString},
-    sync::aref::{ARef, RefCounted},
+    sync::aref::{ARef, AlwaysRefCounted, RefCounted},
     types::Opaque,
 };
 

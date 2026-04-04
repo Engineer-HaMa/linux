@@ -15,7 +15,6 @@ use kernel::{
             GenDiskBuilder, //
         }, //
     },
-    c_str,
     configfs::{
         self,
         AttributeOperations, //
@@ -688,18 +687,14 @@ configfs_attribute!(
 configfs_attribute!(
     DeviceConfig,
     32,
-    show: |this, page| {Ok(0)},
-    store: |this,page| {
-        Err(ENOTSUPP)
-    },
+    show: |_this, _page| Ok(0),
+    store: |_this, _page| Err(ENOTSUPP),
 );
 
 #[cfg(not(CONFIG_BLK_DEV_ZONED))]
 configfs_attribute!(
     DeviceConfig,
     33,
-    show: |this, page| {Ok(0)},
-    store: |this,page| {
-        Err(ENOTSUPP)
-    },
+    show: |_this, _page| Ok(0),
+    store: |_this, _page| Err(ENOTSUPP),
 );
