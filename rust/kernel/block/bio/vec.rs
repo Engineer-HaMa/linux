@@ -264,6 +264,7 @@ impl<'a> BioSegmentIterator<'a> {
     /// Caller must ensure that `self.iter.bi_size` > 0 before calling this
     /// method.
     #[inline(always)]
+    #[allow(clippy::incompatible_msrv)]
     unsafe fn bvec(&self) -> &bindings::bio_vec {
         debug_assert!(self.iter.bi_size > 0);
         // SAFETY: By the safety requirement of this function and the type

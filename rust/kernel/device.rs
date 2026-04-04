@@ -8,7 +8,7 @@ use crate::{
     bindings,
     fmt,
     prelude::*,
-    sync::aref::{ARef, RefCounted},
+    sync::aref::{ARef, AlwaysRefCounted, RefCounted},
     types::{
         ForeignOwnable,
         Opaque, //

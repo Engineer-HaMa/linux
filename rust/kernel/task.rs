@@ -9,7 +9,7 @@ use crate::{
     mm::MmWithUser,
     pid_namespace::PidNamespace,
     prelude::*,
-    sync::aref::{ARef, RefCounted},
+    sync::aref::{ARef, AlwaysRefCounted, RefCounted},
     types::{NotThreadSafe, Opaque},
 };
 use core::{

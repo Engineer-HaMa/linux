@@ -108,6 +108,3 @@ pub use super::{
 #[doc(no_inline)]
 pub use super::dbg;
 pub use super::impl_flags;
-
-#[cfg(not(CONFIG_RUSTC_HAS_SLICE_AS_FLATTENED))]
-pub use super::slice::AsFlattened;
