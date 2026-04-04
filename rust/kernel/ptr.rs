@@ -249,6 +249,7 @@ impl<T> KnownSize for T {
 
 impl<T> KnownSize for [T] {
     #[inline(always)]
+    #[allow(clippy::incompatible_msrv)]
     fn size(p: *const Self) -> usize {
         p.len() * size_of::<T>()
     }

@@ -104,7 +104,7 @@ macro_rules! configfs_simple_field {
         crate::configfs::macros::configfs_attribute!($type, $id,
             show: |this, page| crate::configfs::macros::show_field(this.data.lock().$field, page),
             store: |this, page| crate::configfs::macros::store_number_with_power_check(this, page, |this, value: $field_type| {
-                $check(value)?;
+                ($check)(value)?;
                 this.data.lock().$field = value;
                 Ok(())
             })

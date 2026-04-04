@@ -20,7 +20,8 @@ use crate::{
     prelude::*,
     types::{
         AlwaysRefCounted,
-        Opaque, //
+        Opaque,
+        RefCounted, //
     },
     ThisModule, //
 };
@@ -383,7 +384,7 @@ impl<Ctx: device::DeviceContext> AsRef<Device> for Interface<Ctx> {
 }
 
 // SAFETY: Instances of `Interface` are always reference-counted.
-unsafe impl AlwaysRefCounted for Interface {
+unsafe impl RefCounted for Interface {
     fn inc_ref(&self) {
         // SAFETY: The invariants of `Interface` guarantee that `self.as_raw()`
         // returns a valid `struct usb_interface` pointer, for which we will
@@ -396,6 +397,10 @@ unsafe impl AlwaysRefCounted for Interface {
         unsafe { bindings::usb_put_intf(obj.cast().as_ptr()) }
     }
 }
+
+// SAFETY: We do not implement `Ownable`, thus it is okay to obtain an `ARef<Interface>` from a
+// `&Interface`.
+unsafe impl AlwaysRefCounted for Interface {}
 
 // SAFETY: A `Interface` is always reference-counted and can be released from any thread.
 unsafe impl Send for Interface {}
@@ -434,7 +439,7 @@ kernel::impl_device_context_deref!(unsafe { Device });
 kernel::impl_device_context_into_aref!(Device);
 
 // SAFETY: Instances of `Device` are always reference-counted.
-unsafe impl AlwaysRefCounted for Device {
+unsafe impl RefCounted for Device {
     fn inc_ref(&self) {
         // SAFETY: The invariants of `Device` guarantee that `self.as_raw()`
         // returns a valid `struct usb_device` pointer, for which we will
@@ -447,6 +452,10 @@ unsafe impl AlwaysRefCounted for Device {
         unsafe { bindings::usb_put_dev(obj.cast().as_ptr()) }
     }
 }
+
+// SAFETY: We do not implement `Ownable`, thus it is okay to obtain an `ARef<Device>` from a
+// `&Device`.
+unsafe impl AlwaysRefCounted for Device {}
 
 impl<Ctx: device::DeviceContext> AsRef<device::Device<Ctx>> for Device<Ctx> {
     fn as_ref(&self) -> &device::Device<Ctx> {

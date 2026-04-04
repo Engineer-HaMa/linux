@@ -331,17 +331,11 @@ struct NullBlkOptions<'a> {
     shared_tags: bool,
     hw_queue_depth: u32,
     zoned: bool,
-    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(unused_variables))]
     zone_size_mib: u32,
-    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(unused_variables))]
     zone_capacity_mib: u32,
-    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(unused_variables))]
     zone_nr_conv: u32,
-    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(unused_variables))]
     zone_max_open: u32,
-    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(unused_variables))]
     zone_max_active: u32,
-    #[cfg_attr(not(CONFIG_BLK_DEV_ZONED), expect(unused_variables))]
     zone_append_max_sectors: u32,
     forced_unit_access: bool,
     #[cfg(CONFIG_BLK_DEV_RUST_NULL_FAULT_INJECTION)]
@@ -410,12 +404,12 @@ impl NullBlkDevice {
             shared_tags,
             hw_queue_depth,
             zoned,
-            zone_size_mib,
-            zone_capacity_mib,
-            zone_nr_conv,
-            zone_max_open,
-            zone_max_active,
-            zone_append_max_sectors,
+            zone_size_mib: _zone_size_mib,
+            zone_capacity_mib: _zone_capacity_mib,
+            zone_nr_conv: _zone_nr_conv,
+            zone_max_open: _zone_max_open,
+            zone_max_active: _zone_max_active,
+            zone_append_max_sectors: _zone_append_max_sectors,
             forced_unit_access,
 
             #[cfg(CONFIG_BLK_DEV_RUST_NULL_FAULT_INJECTION)]
@@ -503,12 +497,12 @@ impl NullBlkDevice {
                     enable: zoned,
                     device_capacity_mib,
                     block_size_bytes: *block_size_bytes,
-                    zone_size_mib,
-                    zone_capacity_mib,
-                    zone_nr_conv,
-                    zone_max_open,
-                    zone_max_active,
-                    zone_append_max_sectors,
+                    zone_size_mib: _zone_size_mib,
+                    zone_capacity_mib: _zone_capacity_mib,
+                    zone_nr_conv: _zone_nr_conv,
+                    zone_max_open: _zone_max_open,
+                    zone_max_active: _zone_max_active,
+                    zone_append_max_sectors: _zone_append_max_sectors,
                 })?,
                 #[cfg(CONFIG_BLK_DEV_RUST_NULL_FAULT_INJECTION)]
                 requeue_inject,
@@ -538,7 +532,7 @@ impl NullBlkDevice {
             builder = builder
                 .zoned(zoned)
                 .zone_size(queue_data.zoned.size_sectors)
-                .zone_append_max(zone_append_max_sectors);
+                .zone_append_max(_zone_append_max_sectors);
         }
 
         if !cfg!(CONFIG_BLK_DEV_ZONED) && zoned {
