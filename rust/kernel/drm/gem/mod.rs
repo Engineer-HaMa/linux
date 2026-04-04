@@ -17,8 +17,7 @@ use crate::{
     prelude::*,
     sync::aref::{
         ARef,
-        AlwaysRefCounted,
-        RefCounted, //
+        AlwaysRefCounted, //
     },
     types::Opaque,
 };

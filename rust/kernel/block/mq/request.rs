@@ -570,7 +570,7 @@ where
     T::RequestData: HasHrTimer<T::RequestData>,
 {
     fn cancel(&mut self) -> bool {
-        let request_data_ptr = &self.inner.wrapper_ref().data as *const T::RequestData;
+        let request_data_ptr = core::ptr::from_ref(&self.inner.wrapper_ref().data);
 
         // SAFETY: As we obtained `self_ptr` from a valid reference above, it
         // must point to a valid `U`.
@@ -633,7 +633,7 @@ where
     type TimerHandle = RequestTimerHandle<T>;
 
     fn start(self, expires: <Self::TimerMode as HrTimerMode>::Expires) -> RequestTimerHandle<T> {
-        let pdu_ptr = self.data_ref() as *const T::RequestData;
+        let pdu_ptr = core::ptr::from_ref(self.data_ref());
 
         // SAFETY: `pdu_pointer` is coerced from a live reference to a `T` and this points to a
         // valid `T`. The reference is valid until `T` is dropped, and the timer will be canceled

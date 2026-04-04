@@ -847,6 +847,8 @@ where
     // `align_of::<T>()`, and all concurrent accesses from kernel are atomic, hence no data race
     // per LKMM.
     unsafe { Atomic::from_ptr(ptr) }.cmpxchg(old, new, o)
+}
+
 /// Copy `len` bytes from `src` to `dst` using byte-wise atomic operations.
 ///
 /// This copy operation is volatile.
