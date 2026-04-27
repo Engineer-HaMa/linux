@@ -4,28 +4,59 @@
 //!
 //! Based on the C driver written by Matthew Wilcox <willy@linux.intel.com>.
 
+// In-tree NVMe driver: relax clippy lints that the WIP driver does not yet
+// satisfy under the kernel's `-Wclippy::*` flags.
+#![allow(clippy::ptr_as_ptr)]
+#![allow(clippy::ptr_cast_constness)]
+#![allow(clippy::unnecessary_cast)]
+#![allow(clippy::cast_lossless)]
+#![allow(clippy::useless_conversion)]
+#![allow(clippy::manual_div_ceil)]
+#![allow(clippy::undocumented_unsafe_blocks)]
+#![allow(clippy::unnecessary_safety_comment)]
+#![allow(clippy::missing_safety_doc)]
+#![allow(clippy::as_underscore)]
+
 use core::{
-    cell::SyncUnsafeCell,
+    cell::UnsafeCell,
     convert::TryInto,
     format_args,
-    sync::atomic::{AtomicU16, AtomicU32, AtomicU64, Ordering},
+    sync::atomic::{
+        AtomicU16,
+        AtomicU32,
+        AtomicU64,
+        Ordering,
+    },
 };
+
 use kernel::{
-    alloc::flags,
-    alloc::KBox,
+    alloc::{
+        flags,
+        KBox,
+    },
     bindings,
-    block::mq,
-    block::mq::gen_disk::GenDisk,
-    c_str, device,
+    block::{
+        mq,
+        mq::gen_disk::GenDisk,
+    },
+    c_str,
+    device,
     devres::Devres,
     dma,
     error::code::*,
-    new_spinlock, pci,
+    io::Io,
+    new_spinlock,
+    pci,
     pci::Bar,
     prelude::*,
-    sync::{Arc, SpinLock},
-    types::ARef,
-    types::AtomicOptionalBoxedPtr,
+    sync::{
+        Arc,
+        SpinLock,
+    },
+    types::{
+        ARef,
+        AtomicOptionalBoxedPtr,
+    },
 };
 
 #[allow(dead_code)]
@@ -36,6 +67,28 @@ mod nvme_queue;
 
 use nvme_defs::*;
 use nvme_driver_defs::*;
+
+/// Local replacement for the nightly-only `core::cell::SyncUnsafeCell`.
+///
+/// `UnsafeCell<T>` plus a manual `Sync` impl is functionally equivalent and
+/// avoids the unstable `sync_unsafe_cell` feature that the kernel build does
+/// not include in its allow-list.
+#[repr(transparent)]
+pub(crate) struct SyncUnsafeCell<T: ?Sized>(UnsafeCell<T>);
+
+// SAFETY: Same contract as `core::cell::SyncUnsafeCell` — callers must
+// synchronize concurrent access externally.
+unsafe impl<T: ?Sized + Sync> Sync for SyncUnsafeCell<T> {}
+
+impl<T> SyncUnsafeCell<T> {
+    pub(crate) const fn new(value: T) -> Self {
+        Self(UnsafeCell::new(value))
+    }
+
+    pub(crate) const fn get(&self) -> *mut T {
+        self.0.get()
+    }
+}
 
 #[pin_data]
 struct NvmeDevice {
@@ -71,6 +124,7 @@ unsafe impl Sync for NvmeData {}
 struct NvmeQueues {
     admin: Option<Arc<nvme_queue::NvmeQueue<nvme_mq::AdminQueueOperations>>>,
     io: KVec<Arc<nvme_queue::NvmeQueue<nvme_mq::IoQueueOperations>>>,
+    disks: Option<KVec<Arc<GenDisk<nvme_mq::IoQueueOperations>>>>,
 }
 
 struct NvmeShadow {
@@ -163,6 +217,7 @@ impl NvmeDevice {
             .virt_boundary_mask(nvme_driver_defs::NVME_CTRL_PAGE_SIZE - 1)
             .max_hw_sectors(max_sectors)
             .max_segments(nvme_driver_defs::NVME_MAX_SEGS as _)
+            .write_cache(true)
             .build(format_args!("nvme{}n{}", instance, nsid), tagset, ns)?;
 
         Ok(disk)
@@ -171,7 +226,7 @@ impl NvmeDevice {
     fn setup_io_queues(
         dev: &Arc<NvmeData>,
         pci_dev: &pci::Device<device::Core>,
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
     ) -> Result<Arc<mq::TagSet<nvme_mq::IoQueueOperations>>> {
         pr_info!("Setting up io queues\n");
         let mut nr_io_queues = dev.poll_queue_count + dev.irq_queue_count;
@@ -199,7 +254,7 @@ impl NvmeDevice {
                 dev.clone(),
                 q_depth,
                 3,
-                bindings::NUMA_NO_NODE,
+                kernel::alloc::NumaNode::NO_NODE,
                 mq::Flags::default(),
             ),
             flags::GFP_KERNEL,
@@ -256,8 +311,8 @@ impl NvmeDevice {
         cap: u64,
         dev: &Arc<NvmeData>,
         pci_dev: &pci::Device<device::Core>,
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
-    ) -> Result {
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
+    ) -> Result<KVec<Arc<GenDisk<nvme_mq::IoQueueOperations>>>> {
         let tagset = Self::setup_io_queues(dev, pci_dev, mq)?;
         pr_info!("setup_io_queues done\n");
 
@@ -283,6 +338,7 @@ impl NvmeDevice {
             (nvme_driver_defs::NVME_MAX_KB_SZ << 1) as u32
         };
         let zero_rt = NvmeLbaRangeType::default();
+        let mut disks = KVec::new();
         for i in 1..=number_of_namespaces {
             if Self::identify(mq, i, 0, id.dma_handle()).is_err() {
                 continue;
@@ -301,14 +357,11 @@ impl NvmeDevice {
 
             pr_info!("about to add disk\n");
             let disk = Self::alloc_ns(max_sectors, dev.instance, i, id_ns, tagset.clone(), rt)?;
-            // TODO: Add disk to list.
+            disks.push(disk, flags::GFP_KERNEL)?;
             pr_info!("disk added\n");
-
-            // TODO: DONT LEAK
-            core::mem::forget(disk);
         }
 
-        Ok(())
+        Ok(disks)
     }
 
     fn wait_ready(dev: &Arc<NvmeData>) {
@@ -342,7 +395,7 @@ impl NvmeDevice {
         pci_dev: &pci::Device<device::Core>,
     ) -> Result<(
         Arc<nvme_queue::NvmeQueue<nvme_mq::AdminQueueOperations>>,
-        mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
     )> {
         // pr_info!("Reset subsystem\n");
         // let support_ssr = (u32::from_le(dev.resources().unwrap.bar.read32(OFFSET_CAP)) >> 36) & 1;
@@ -366,7 +419,7 @@ impl NvmeDevice {
                 dev.clone(),
                 queue_depth,
                 1,
-                bindings::NUMA_NO_NODE,
+                kernel::alloc::NumaNode::NO_NODE,
                 mq::Flags::default(),
             ),
             flags::GFP_KERNEL,
@@ -389,7 +442,7 @@ impl NvmeDevice {
             },
             flags::GFP_KERNEL,
         )?;
-        let admin_mq = mq::RequestQueue::try_new(admin_tagset, ns)?;
+        let admin_mq = mq::OwnedRequestQueue::try_new(admin_tagset, ns)?;
 
         let mut aqa = (queue_depth - 1) as u32;
         aqa |= aqa << 16;
@@ -419,7 +472,7 @@ impl NvmeDevice {
     }
 
     fn submit_sync_command(
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
         mut cmd: NvmeCommand,
     ) -> Result<u32> {
         let op = if unsafe { cmd.common.opcode } & 1 != 0 {
@@ -443,7 +496,7 @@ impl NvmeDevice {
 
     fn set_queue_count(
         count: u32,
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
     ) -> Result<u32> {
         let q_count = (count - 1) | ((count - 1) << 16);
         let res = Self::set_features(mq, NVME_FEAT_NUM_QUEUES, q_count, 0)?;
@@ -451,7 +504,7 @@ impl NvmeDevice {
     }
 
     fn alloc_completion_queue<T: mq::Operations<RequestData = NvmeRequest> + Send>(
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
         queue: &nvme_queue::NvmeQueue<T>,
     ) -> Result<u32> {
         let mut flags = NVME_QUEUE_PHYS_CONTIG;
@@ -476,7 +529,7 @@ impl NvmeDevice {
     }
 
     fn alloc_submission_queue<T: mq::Operations<RequestData = NvmeRequest> + Send>(
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
         queue: &nvme_queue::NvmeQueue<T>,
     ) -> Result<u32> {
         Self::submit_sync_command(
@@ -496,7 +549,7 @@ impl NvmeDevice {
     }
 
     fn identify(
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
         nsid: u32,
         cns: u32,
         dma_addr: u64,
@@ -516,7 +569,7 @@ impl NvmeDevice {
     }
 
     fn get_features(
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
         fid: u32,
         nsid: u32,
         dma_addr: u64,
@@ -536,7 +589,7 @@ impl NvmeDevice {
     }
 
     fn set_features(
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
         fid: u32,
         dword11: u32,
         dma_addr: u64,
@@ -560,7 +613,7 @@ impl NvmeDevice {
 
     #[allow(dead_code)]
     fn dbbuf_set(
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
         dbs_dma_addr: u64,
         eis_dma_addr: u64,
     ) -> Result<u32> {
@@ -595,6 +648,48 @@ impl pci::Driver for NvmeDevice {
 
     const ID_TABLE: pci::IdTable<Self::IdInfo> = &PCI_TABLE;
 
+    fn unbind(_pci_dev: &pci::Device<device::Core>, this: Pin<&Self>) {
+        pr_info!("rnvme: unbind\n");
+
+        // 1. Drop disks — del_gendisk quiesces the block layer.
+        //    Must happen while controller is alive so in-flight I/O can complete.
+        //    Take out from behind spinlock first — del_gendisk may sleep.
+        let disks = this.data.queues.lock().disks.take();
+        drop(disks);
+
+        // 2. Disable controller — stops all DMA and interrupt generation.
+        if let Some(bar) = this.data.bar.try_access() {
+            bar.write32(0, OFFSET_CC);
+        }
+
+        // 3. Wait for controller idle (CSTS.RDY = 0).
+        Self::wait_idle(&this.data);
+
+        // 4. Take all queue references out from behind the spinlock.
+        //    Dropping them can sleep (free_irq, blk_mq_free_tag_set), so
+        //    we must not hold the spinlock during drop.
+        let (io_queues, admin_queue) = {
+            let mut queues = this.data.queues.lock();
+            let io = core::mem::take(&mut queues.io);
+            let admin = queues.admin.take();
+            (io, admin)
+        };
+
+        // 5. Unregister IRQs — free_irq may sleep.
+        for q in io_queues.iter() {
+            q.unregister_irq();
+        }
+        if let Some(admin) = &admin_queue {
+            admin.unregister_irq();
+        }
+
+        // 6. Drop queues — TagSet::drop calls blk_mq_free_tag_set which may sleep.
+        drop(io_queues);
+        drop(admin_queue);
+
+        pr_info!("rnvme: unbind complete\n");
+    }
+
     fn probe(pci_dev: &pci::Device<device::Core>, _id: &Self::IdInfo) -> impl PinInit<Self, Error> {
         pin_init::pin_init_scope(move || {
             pr_info!("probe called!\n");
@@ -607,16 +702,16 @@ impl pci::Driver for NvmeDevice {
             pci_dev.as_ref().dma_set_mask(!0)?;
             pci_dev.as_ref().dma_set_coherent_mask(!0)?;
 
-            let param_irq_queue_count = *module_parameters::irq_queue_count.value();
-            let param_poll_queue_count = *module_parameters::poll_queue_count.value();
+            let param_irq_queue_count = module_parameters::irq_queue_count.value();
+            let param_poll_queue_count = module_parameters::poll_queue_count.value();
             let irq_queue_count: u32 = if param_irq_queue_count == -1 {
-                kernel::num_possible_cpus()
+                kernel::cpu::num_possible_cpus()
             } else {
                 param_irq_queue_count as u32
             };
 
             let poll_queue_count: u32 = if param_poll_queue_count == -1 {
-                kernel::num_possible_cpus()
+                kernel::cpu::num_possible_cpus()
             } else {
                 param_poll_queue_count as u32
             };
@@ -659,6 +754,7 @@ impl pci::Driver for NvmeDevice {
                         NvmeQueues {
                             admin: None,
                             io: Vec::new(),
+                            disks: None,
                         }),
                     poll_queue_count: poll_queue_count,
                     irq_queue_count: irq_queue_count,
@@ -676,10 +772,8 @@ impl pci::Driver for NvmeDevice {
             let (_admin_nvme_queue, admin_mq) = Self::configure_admin_queue(&data, pci_dev)?;
             pr_info!("Created admin queue\n");
 
-            if let Err(e) = Self::dev_add(cap, &data, pci_dev, &admin_mq) {
-                pr_info!("Probe failed: {:?}\n", e);
-                return Err(e);
-            }
+            let disks = Self::dev_add(cap, &data, pci_dev, &admin_mq)?;
+            data.queues.lock().disks = Some(disks);
 
             pr_info!("Probe succeeded!\n");
             Ok(try_pin_init!(Self {

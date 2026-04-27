@@ -4,14 +4,15 @@
 //!
 //! C header: [`include/linux/blk_types.h`](srctree/include/linux/blk_types.h)
 
-use crate::{
-    fmt,
-    types::Opaque, //
-};
 use core::{
     marker::PhantomData,
     pin::Pin,
     ptr::NonNull, //
+};
+
+use crate::{
+    fmt,
+    types::Opaque, //
 };
 
 mod vec;

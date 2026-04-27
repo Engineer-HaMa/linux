@@ -19,6 +19,8 @@ use disk_storage::{
     NullBlockPage,
     TreeContainer, //
 };
+#[cfg(CONFIG_BLK_DEV_RUST_NULL_FAULT_INJECTION)]
+use kernel::fault_injection::FaultConfig;
 use kernel::{
     bindings,
     block::{
@@ -94,9 +96,6 @@ use kernel::{
     xarray::XArraySheaf, //
 };
 use util::*;
-
-#[cfg(CONFIG_BLK_DEV_RUST_NULL_FAULT_INJECTION)]
-use kernel::fault_injection::FaultConfig;
 
 module! {
     type: NullBlkModule,
@@ -1058,7 +1057,9 @@ impl Operations for NullBlkDevice {
     type TagSetData = KBox<NullBlkTagsetData>;
     type HwData = Pin<KBox<SpinLock<HwQueueContext>>>;
 
-    fn new_request_data() -> impl PinInit<Self::RequestData> {
+    fn new_request_data(
+        _tagset_data: <Self::TagSetData as kernel::types::ForeignOwnable>::Borrowed<'_>,
+    ) -> impl PinInit<Self::RequestData> {
         pin_init!(Pdu {
             timer <- HrTimer::new(),
             error: Atomic::new(0),

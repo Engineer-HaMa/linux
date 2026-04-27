@@ -4,6 +4,18 @@
 //!
 //! C header: [`include/linux/blk-mq.h`](srctree/include/linux/blk-mq.h)
 
+use core::{
+    convert::TryInto,
+    marker::PhantomData,
+    pin::Pin, //
+};
+
+use pin_init::{
+    pin_data,
+    pinned_drop,
+    PinInit, //
+};
+
 use crate::{
     alloc::NumaNode,
     block::mq::{
@@ -22,16 +34,6 @@ use crate::{
         ForeignOwnable,
         Opaque, //
     },
-};
-use core::{
-    convert::TryInto,
-    marker::PhantomData,
-    pin::Pin, //
-};
-use pin_init::{
-    pin_data,
-    pinned_drop,
-    PinInit, //
 };
 
 mod flags;

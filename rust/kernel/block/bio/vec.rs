@@ -224,7 +224,7 @@ impl Segment<'_> {
 
     /// Returns the page for this segment.
     pub fn page(&self) -> *mut bindings::page {
-       self.bio_vec.bv_page
+        self.bio_vec.bv_page
     }
 }
 

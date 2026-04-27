@@ -1,13 +1,19 @@
-use crate::le;
-use crate::nvme_driver_defs;
-use crate::MappingData;
-use crate::NvmeCommand;
-use crate::NvmeData;
 use core::mem::ManuallyDrop;
-use kernel::dma;
-use kernel::prelude::*;
-use kernel::sync::Arc;
-use kernel::types::ScopeGuard;
+
+use kernel::{
+    dma,
+    prelude::*,
+    sync::Arc,
+    types::ScopeGuard,
+};
+
+use crate::{
+    le,
+    nvme_driver_defs,
+    MappingData,
+    NvmeCommand,
+    NvmeData,
+};
 
 pub(crate) fn free_prps(
     count: usize,
@@ -16,20 +22,26 @@ pub(crate) fn free_prps(
     dma_pool: &Arc<dma::Pool<le<u64>>>,
 ) {
     let mut dma_addr = first_dma;
+    let entries = nvme_driver_defs::NVME_CTRL_PAGE_SIZE / 8;
+    let size = nvme_driver_defs::NVME_CTRL_PAGE_SIZE;
+    // SAFETY: `dma_pool` is a valid `Arc<Pool>` (allocator data source).
+    let alloc_data = unsafe { <dma::Pool<le<u64>> as dma::Allocator>::allocation_data(dma_pool) };
     for page in &pages[..count] {
-        let prp_list = unsafe {
-            dma::CoherentAllocation::<le<u64>, dma::Pool<le<u64>>>::from_parts(
-                dma_pool,
-                *page,
-                dma_addr,
-                nvme_driver_defs::NVME_CTRL_PAGE_SIZE / 8,
-            )
-        };
-
-        dma_addr = prp_list
-            .read(nvme_driver_defs::NVME_CTRL_PAGE_SIZE / 8 - 1)
-            .unwrap()
-            .into();
+        let page_ptr = *page as *mut le<u64>;
+        // SAFETY: `page_ptr` was allocated via this pool with NVME_CTRL_PAGE_SIZE
+        // bytes; reading entry `entries - 1` is within bounds.
+        let next_dma_addr: le<u64> = unsafe { core::ptr::read_volatile(page_ptr.add(entries - 1)) };
+        // No-flag `Attrs`. The newtype field is private; combine + mask cancel.
+        let no_attrs = dma::attrs::DMA_ATTR_WEAK_ORDERING & !dma::attrs::DMA_ATTR_WEAK_ORDERING;
+        // SAFETY: `page_ptr` and `dma_addr` correspond to a valid pool allocation.
+        <dma::Pool<le<u64>> as dma::Allocator>::free(
+            page_ptr.cast(),
+            dma_addr,
+            size,
+            &alloc_data,
+            no_attrs,
+        );
+        dma_addr = next_dma_addr.into();
     }
 }
 

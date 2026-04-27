@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 
-use super::HwQueueContext;
-use crate::util::*;
 use core::pin::Pin;
+
 use kernel::{
     block,
     new_spinlock,
@@ -25,6 +24,9 @@ use kernel::{
     }, //
 };
 pub(crate) use page::NullBlockPage;
+
+use super::HwQueueContext;
+use crate::util::*;
 
 mod page;
 

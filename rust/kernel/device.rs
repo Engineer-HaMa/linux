@@ -4,9 +4,14 @@
 //!
 //! C header: [`include/linux/device.h`](srctree/include/linux/device.h)
 
+use core::{
+    any::TypeId,
+    marker::PhantomData,
+    ptr, //
+};
+
 use crate::{
     bindings,
-    error::{code::EIO, Error, Result},
     fmt,
     prelude::*,
     sync::aref::{
@@ -18,11 +23,6 @@ use crate::{
         ForeignOwnable,
         Opaque, //
     }, //
-};
-use core::{
-    any::TypeId,
-    marker::PhantomData,
-    ptr, //
 };
 
 pub mod property;
@@ -506,9 +506,11 @@ impl<Ctx: DeviceContext> Device<Ctx> {
         unsafe { CStr::from_char_ptr(bindings::dev_name(self.as_raw())) }
     }
 
+    /// Set the DMA mask for this device.
     pub fn dma_set_mask(&self, mask: u64) -> Result {
         let dev = self.as_raw();
-        let ret = unsafe { bindings::dma_set_mask(dev as _, mask) };
+        // SAFETY: `dev` is valid by the type invariant on `Device`.
+        let ret = unsafe { bindings::dma_set_mask(dev, mask) };
         if ret != 0 {
             Err(Error::from_errno(ret))
         } else {
@@ -516,9 +518,11 @@ impl<Ctx: DeviceContext> Device<Ctx> {
         }
     }
 
+    /// Set the coherent DMA mask for this device.
     pub fn dma_set_coherent_mask(&self, mask: u64) -> Result {
         let dev = self.as_raw();
-        let ret = unsafe { bindings::dma_set_coherent_mask(dev as _, mask) };
+        // SAFETY: `dev` is valid by the type invariant on `Device`.
+        let ret = unsafe { bindings::dma_set_coherent_mask(dev, mask) };
         if ret != 0 {
             Err(Error::from_errno(ret))
         } else {
@@ -526,18 +530,14 @@ impl<Ctx: DeviceContext> Device<Ctx> {
         }
     }
 
+    /// Map a scatter-gather list for DMA in direction `dir`.
     pub fn dma_map_sg(&self, sglist: &mut [bindings::scatterlist], dir: u32) -> Result {
         let dev = self.as_raw();
-        let count = sglist.len().try_into()?;
-        let ret = unsafe {
-            bindings::dma_map_sg_attrs(
-                dev,
-                &mut sglist[0],
-                count,
-                dir,
-                bindings::DMA_ATTR_NO_WARN.try_into()?,
-            )
-        };
+        let count: i32 = sglist.len().try_into()?;
+        let attrs: usize = bindings::DMA_ATTR_NO_WARN as usize;
+        // SAFETY: `dev` is valid. `sglist` is a valid slice so `&mut sglist[0]` is valid.
+        let ret =
+            unsafe { bindings::dma_map_sg_attrs(dev, &mut sglist[0], count, dir as i32, attrs) };
         // TODO: It may map fewer than what was requested. What happens then?
         if ret == 0 {
             return Err(EIO);
@@ -545,10 +545,12 @@ impl<Ctx: DeviceContext> Device<Ctx> {
         Ok(())
     }
 
+    /// Unmap a scatter-gather list previously mapped with [`dma_map_sg`](Self::dma_map_sg).
     pub fn dma_unmap_sg(&self, sglist: &mut [bindings::scatterlist], dir: u32) {
         let dev = self.as_raw();
-        let count = sglist.len() as _;
-        unsafe { bindings::dma_unmap_sg_attrs(dev, &mut sglist[0], count, dir, 0) };
+        let count: i32 = sglist.len() as i32;
+        // SAFETY: `dev` is valid. `sglist` elements were previously mapped via `dma_map_sg`.
+        unsafe { bindings::dma_unmap_sg_attrs(dev, &mut sglist[0], count, dir as i32, 0) };
     }
 }
 

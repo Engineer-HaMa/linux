@@ -1,27 +1,43 @@
-use crate::NvmeCommand;
-use crate::NvmeCompletion;
-use crate::NvmeData;
-use crate::NvmeRequest;
-use core;
-use core::sync::atomic::fence;
-use core::sync::atomic::AtomicU16;
-use core::sync::atomic::Ordering;
-use kernel::alloc::flags;
-use kernel::block::mq;
-use kernel::c_str;
-use kernel::device::{self, Bound, Device};
-use kernel::dma;
-use kernel::irq;
-use kernel::new_spinlock;
-use kernel::pci;
-use kernel::pr_info;
-use kernel::pr_warn;
-use kernel::prelude::*;
-use kernel::sync::Arc;
-use kernel::sync::SpinLock;
-use kernel::sync::UniqueArc;
-use kernel::transmute::FromBytes;
-use kernel::transmute::AsBytes;
+use core::sync::atomic::{
+    fence,
+    AtomicU16,
+    Ordering,
+};
+
+use kernel::{
+    alloc::flags,
+    block::mq,
+    c_str,
+    device::{
+        self,
+        Bound,
+        Device,
+    },
+    dma,
+    io::Io,
+    irq,
+    new_spinlock,
+    pci,
+    pr_info,
+    pr_warn,
+    prelude::*,
+    sync::{
+        Arc,
+        SpinLock,
+        UniqueArc,
+    },
+    transmute::{
+        AsBytes,
+        FromBytes,
+    },
+};
+
+use crate::{
+    NvmeCommand,
+    NvmeCompletion,
+    NvmeData,
+    NvmeRequest,
+};
 
 struct NvmeQueueInner<T: mq::Operations<RequestData = NvmeRequest> + Send + 'static> {
     sq_tail: u16,
@@ -64,8 +80,10 @@ where
         tagset: Arc<mq::TagSet<T>>,
         polled: bool,
     ) -> Result<Arc<Self>> {
-        let cq = dma::CoherentAllocation::alloc_coherent(dev.as_ref(), depth.into(), flags::GFP_KERNEL)?;
-        let sq = dma::CoherentAllocation::alloc_coherent(dev.as_ref(), depth.into(), flags::GFP_KERNEL)?;
+        let cq =
+            dma::CoherentAllocation::alloc_coherent(dev.as_ref(), depth.into(), flags::GFP_KERNEL)?;
+        let sq =
+            dma::CoherentAllocation::alloc_coherent(dev.as_ref(), depth.into(), flags::GFP_KERNEL)?;
 
         // Zero out all completions. This is necessary so that we can check the phase.
         for i in 0..depth {
@@ -262,6 +280,9 @@ where
 // SAFETY: `NvmeQueue` only uses interior mutability (`AtomicU16`, `SpinLock`), so sharing
 // across threads is safe.
 unsafe impl<T: mq::Operations<RequestData = NvmeRequest> + Send + 'static> Sync for NvmeQueue<T> {}
+// SAFETY: The concrete `TagSetData` (`Arc<NvmeData>`) is `Send`; `NvmeQueue` is only ever
+// instantiated with such operations, so it is safe to send across threads.
+unsafe impl<T: mq::Operations<RequestData = NvmeRequest> + Send + 'static> Send for NvmeQueue<T> {}
 
 impl<T> irq::Handler for NvmeQueue<T>
 where
@@ -275,7 +296,6 @@ where
         }
     }
 }
-
 
 unsafe impl kernel::transmute::AsBytes for NvmeCompletion {}
 unsafe impl kernel::transmute::FromBytes for NvmeCompletion {}

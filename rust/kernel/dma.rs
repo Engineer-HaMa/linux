@@ -4,6 +4,14 @@
 //!
 //! C header: [`include/linux/dma-mapping.h`](srctree/include/linux/dma-mapping.h)
 
+use core::{
+    ops::{
+        Deref,
+        DerefMut, //
+    },
+    ptr::NonNull, //
+};
+
 use crate::{
     bindings,
     debugfs,
@@ -22,13 +30,6 @@ use crate::{
         FromBytes, //
     }, //
     uaccess::UserSliceWriter,
-};
-use core::{
-    ops::{
-        Deref,
-        DerefMut, //
-    },
-    ptr::NonNull, //
 };
 
 /// DMA address type.
@@ -1132,6 +1133,325 @@ unsafe impl Send for CoherentHandle {}
 // operations on `&CoherentHandle` are reading the DMA handle and size, both of which are
 // plain `Copy` values.
 unsafe impl Sync for CoherentHandle {}
+
+/// Trait for DMA allocation strategies.
+///
+/// Implemented by allocators that provide and free DMA memory used with
+/// [`CoherentAllocation`].
+pub trait Allocator {
+    /// Data stored alongside each allocation for freeing.
+    type AllocationData;
+    /// Source from which allocation data can be derived.
+    type DataSource;
+
+    /// Free a DMA allocation.
+    fn free(
+        cpu_addr: *mut crate::ffi::c_void,
+        dma_handle: u64,
+        size: usize,
+        alloc_data: &Self::AllocationData,
+        attrs: Attrs,
+    );
+
+    /// Derive allocation data from the data source.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that `data` is valid and that the resulting
+    /// allocation data can be used to free the allocation.
+    unsafe fn allocation_data(data: &Self::DataSource) -> Self::AllocationData;
+}
+
+/// Default coherent DMA allocator using `dma_alloc_attrs` / `dma_free_attrs`.
+pub struct CoherentAllocator;
+
+impl Allocator for CoherentAllocator {
+    type AllocationData = ARef<device::Device>;
+    type DataSource = ARef<device::Device>;
+
+    // Caller ensures `cpu_addr` is a valid DMA allocation from `dma_alloc_attrs`.
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
+    fn free(
+        cpu_addr: *mut crate::ffi::c_void,
+        dma_handle: u64,
+        size: usize,
+        alloc_data: &Self::AllocationData,
+        attrs: Attrs,
+    ) {
+        // SAFETY: Device pointer is guaranteed valid by the type invariant on `Device`.
+        // The cpu address and dma handle are valid by construction.
+        unsafe {
+            bindings::dma_free_attrs(
+                alloc_data.as_raw(),
+                size,
+                cpu_addr,
+                dma_handle,
+                attrs.as_raw(),
+            )
+        }
+    }
+
+    unsafe fn allocation_data(data: &ARef<device::Device>) -> ARef<device::Device> {
+        data.clone()
+    }
+}
+
+/// A typed DMA coherent allocation that supports multiple elements of type `T`.
+///
+/// This wraps a DMA allocation (via `dma_alloc_attrs` or a pool) and provides
+/// typed access helpers used by rnvme.
+///
+/// The allocator type `A` determines how the memory is freed.
+pub struct CoherentAllocation<T: AsBytes + FromBytes, A: Allocator = CoherentAllocator> {
+    alloc_data: A::AllocationData,
+    dma_handle: DmaAddress,
+    count: usize,
+    cpu_addr: NonNull<T>,
+    dma_attrs: Attrs,
+    _p: core::marker::PhantomData<A>,
+}
+
+impl<T: AsBytes + FromBytes> CoherentAllocation<T, CoherentAllocator> {
+    /// Allocate a region of `count` elements of type `T` using coherent DMA.
+    pub fn alloc_coherent(
+        dev: &device::Device<Bound>,
+        count: usize,
+        gfp_flags: crate::alloc::Flags,
+    ) -> Result<Self> {
+        let size = count
+            .checked_mul(core::mem::size_of::<T>())
+            .ok_or(crate::error::code::ENOMEM)?;
+        let mut dma_handle = 0u64;
+        // SAFETY: `dev.as_raw()` is valid by the type invariant on `Device`. `size` is non-zero
+        // because `size_of::<T>() > 0` and count is non-zero by contract.
+        let addr = unsafe {
+            bindings::dma_alloc_attrs(dev.as_raw(), size, &mut dma_handle, gfp_flags.as_raw(), 0)
+        };
+        let cpu_addr = NonNull::new(addr.cast::<T>()).ok_or(crate::error::code::ENOMEM)?;
+        Ok(Self {
+            alloc_data: dev.into(),
+            dma_handle,
+            count,
+            cpu_addr,
+            dma_attrs: Attrs(0),
+            _p: core::marker::PhantomData,
+        })
+    }
+}
+
+impl<T: AsBytes + FromBytes, A: Allocator> CoherentAllocation<T, A> {
+    fn new_inner(
+        cpu_addr: NonNull<T>,
+        dma_handle: DmaAddress,
+        count: usize,
+        alloc_data: A::AllocationData,
+        dma_attrs: Attrs,
+    ) -> Self {
+        Self {
+            alloc_data,
+            dma_handle,
+            count,
+            cpu_addr,
+            dma_attrs,
+            _p: core::marker::PhantomData,
+        }
+    }
+
+    /// Returns the DMA handle for this allocation.
+    pub fn dma_handle(&self) -> DmaAddress {
+        self.dma_handle
+    }
+
+    /// Returns the number of elements in this allocation.
+    pub fn count(&self) -> usize {
+        self.count
+    }
+
+    /// Returns a raw pointer to the start of the allocation.
+    pub fn start_ptr(&self) -> *const T {
+        self.cpu_addr.as_ptr()
+    }
+
+    /// Returns a mutable raw pointer to the start of the allocation.
+    pub fn start_ptr_mut(&mut self) -> *mut T {
+        self.cpu_addr.as_ptr()
+    }
+
+    /// Write a value at `index`.
+    pub fn write_item(&self, index: usize, value: &T) -> bool
+    where
+        T: Copy,
+    {
+        if index >= self.count {
+            return false;
+        }
+        // SAFETY: `index < self.count` so `ptr` is within the allocation bounds.
+        let ptr = unsafe { self.cpu_addr.as_ptr().add(index) };
+        // SAFETY: `ptr` points to a valid, properly aligned element within the allocation.
+        unsafe { ptr.write(*value) };
+        true
+    }
+
+    /// Read a value at `index` using a volatile read.
+    pub fn read_volatile(&self, index: usize) -> Option<T> {
+        if index >= self.count {
+            return None;
+        }
+        // SAFETY: `index < self.count` so `ptr` is within the allocation bounds.
+        let ptr = unsafe { self.cpu_addr.as_ptr().add(index) };
+        // SAFETY: `ptr` points to a valid, properly aligned element within the allocation.
+        Some(unsafe { ptr.read_volatile() })
+    }
+
+    /// Read the element at `index` and replace it with `value`.
+    pub fn read_write(&self, index: usize, value: T) -> Option<T> {
+        if index >= self.count {
+            return None;
+        }
+        // SAFETY: `index < self.count` so `ptr` is within the allocation bounds.
+        let ptr = unsafe { self.cpu_addr.as_ptr().add(index) };
+        // SAFETY: `ptr` points to a valid, properly aligned element within the allocation.
+        let ret = unsafe { ptr.read() };
+        // SAFETY: `ptr` points to a valid, properly aligned element within the allocation.
+        unsafe { ptr.write(value) };
+        Some(ret)
+    }
+}
+
+impl<T: AsBytes + FromBytes, A: Allocator> Drop for CoherentAllocation<T, A> {
+    fn drop(&mut self) {
+        let size = self.count * core::mem::size_of::<T>();
+        A::free(
+            self.cpu_addr.as_ptr().cast(),
+            self.dma_handle,
+            size,
+            &self.alloc_data,
+            self.dma_attrs,
+        );
+    }
+}
+
+// SAFETY: CoherentAllocation is safe to send across threads when T is Send.
+unsafe impl<T: AsBytes + FromBytes + Send, A: Allocator> Send for CoherentAllocation<T, A> {}
+
+// SAFETY: CoherentAllocation is safe to share across threads when T is Sync.
+unsafe impl<T: AsBytes + FromBytes + Sync, A: Allocator> Sync for CoherentAllocation<T, A> {}
+
+/// DMA memory pool.
+///
+/// A pool of fixed-size DMA-coherent memory blocks. Each allocation from the
+/// pool is one block of `count * size_of::<T>()` bytes.
+#[allow(dead_code)]
+pub struct Pool<T> {
+    ptr: *mut bindings::dma_pool,
+    dev: ARef<device::Device>,
+    count: usize,
+    _p: core::marker::PhantomData<T>,
+}
+
+impl<T: AsBytes + FromBytes> Pool<T> {
+    /// Creates a new DMA memory pool.
+    ///
+    /// - `name`: pool name used for debugging.
+    /// - `dev`: the device owning the pool.
+    /// - `count`: number of `T` elements per allocation block.
+    /// - `align`: alignment requirement for pool allocations.
+    /// - `boundary`: allocations must not cross this power-of-2 boundary (0 means none).
+    pub fn try_new(
+        name: &crate::str::CStr,
+        dev: ARef<device::Device>,
+        count: usize,
+        align: usize,
+        boundary: usize,
+    ) -> Result<crate::sync::Arc<Self>> {
+        let t_size = core::mem::size_of::<T>();
+        let size = count
+            .checked_mul(t_size)
+            .ok_or(crate::error::code::ENOMEM)?;
+        // SAFETY: `dev.as_raw()` is valid by the type invariant. `name.as_char_ptr()` is a
+        // valid NUL-terminated string for the lifetime of this call.
+        let ptr = unsafe {
+            bindings::dma_pool_create(name.as_char_ptr(), dev.as_raw(), size, align, boundary)
+        };
+        if ptr.is_null() {
+            Err(crate::error::code::ENOMEM)
+        } else {
+            crate::sync::Arc::new(
+                Self {
+                    ptr,
+                    count,
+                    dev,
+                    _p: core::marker::PhantomData,
+                },
+                crate::alloc::flags::GFP_KERNEL,
+            )
+            .map_err(|e| e.into())
+        }
+    }
+
+    /// Allocate one block from the pool.
+    pub fn try_alloc(&self, atomic: bool) -> Result<CoherentAllocation<T, Self>> {
+        let gfp = if atomic {
+            bindings::GFP_ATOMIC
+        } else {
+            bindings::GFP_KERNEL
+        };
+
+        let mut dma_handle = 0u64;
+        // SAFETY: `self.ptr` is a valid `dma_pool` pointer created in `try_new`.
+        let ptr = unsafe { bindings::dma_pool_alloc(self.ptr, gfp, &mut dma_handle) };
+        if ptr.is_null() {
+            Err(crate::error::code::ENOMEM)
+        } else {
+            Ok(CoherentAllocation::new_inner(
+                // SAFETY: We just checked that `ptr` is not null. It was returned by
+                // `dma_pool_alloc` so it is valid and properly aligned for `T`.
+                unsafe { NonNull::new_unchecked(ptr.cast::<T>()) },
+                dma_handle,
+                self.count,
+                self.ptr,
+                Attrs(0),
+            ))
+        }
+    }
+}
+
+// SAFETY: `Pool` wraps a pointer to a C `struct dma_pool` protected by a spinlock.
+unsafe impl<T> Send for Pool<T> {}
+
+// SAFETY: `Pool` wraps a pointer to a C `struct dma_pool` protected by a spinlock.
+unsafe impl<T> Sync for Pool<T> {}
+
+impl<T> Drop for Pool<T> {
+    fn drop(&mut self) {
+        // SAFETY: All allocations from the pool have been freed before this is called
+        // because the pool is Arc-counted and each allocation increments the refcount.
+        unsafe { bindings::dma_pool_destroy(self.ptr) };
+    }
+}
+
+impl<T> Allocator for Pool<T> {
+    type AllocationData = *mut bindings::dma_pool;
+    type DataSource = crate::sync::Arc<Self>;
+
+    // Caller ensures `cpu_addr` and `pool` are valid DMA pool allocation/pool pointers.
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
+    fn free(
+        cpu_addr: *mut crate::ffi::c_void,
+        dma_handle: u64,
+        _size: usize,
+        pool: &*mut bindings::dma_pool,
+        _attrs: Attrs,
+    ) {
+        // SAFETY: `cpu_addr` and `dma_handle` came from a successful `dma_pool_alloc` call.
+        // `*pool` is valid because `AllocationData` stores the raw pool pointer.
+        unsafe { bindings::dma_pool_free(*pool, cpu_addr, dma_handle) };
+    }
+
+    unsafe fn allocation_data(data: &crate::sync::Arc<Self>) -> *mut bindings::dma_pool {
+        data.ptr
+    }
+}
 
 /// Reads a field of an item from an allocated region of structs.
 ///

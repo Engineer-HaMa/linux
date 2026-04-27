@@ -4,16 +4,25 @@
 //!
 //! C header: [`include/linux/property.h`](srctree/include/linux/property.h)
 
-use core::{mem::MaybeUninit, ptr};
+use core::{
+    mem::MaybeUninit,
+    ptr,
+};
 
 use super::private::Sealed;
 use crate::{
     alloc::KVec,
     bindings,
-    error::{to_result, Result},
+    error::{
+        to_result,
+        Result,
+    },
     fmt,
     prelude::*,
-    str::{CStr, CString},
+    str::{
+        CStr,
+        CString,
+    },
     sync::aref::{
         ARef,
         AlwaysRefCounted, //

@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 
-use super::{
-    DiskStorage,
-    NullBlkDevice,
-    THIS_MODULE, //
-};
 use core::fmt::Write;
+
 use kernel::{
     bindings,
     block::{
@@ -44,6 +40,12 @@ use macros::{
     show_field,
     store_number_with_power_check,
     store_with_power_check, //
+};
+
+use super::{
+    DiskStorage,
+    NullBlkDevice,
+    THIS_MODULE, //
 };
 
 mod macros;
