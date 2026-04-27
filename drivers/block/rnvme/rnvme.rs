@@ -171,7 +171,7 @@ impl NvmeDevice {
     fn setup_io_queues(
         dev: &Arc<NvmeData>,
         pci_dev: &pci::Device<device::Core>,
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
     ) -> Result<Arc<mq::TagSet<nvme_mq::IoQueueOperations>>> {
         pr_info!("Setting up io queues\n");
         let mut nr_io_queues = dev.poll_queue_count + dev.irq_queue_count;
@@ -256,7 +256,7 @@ impl NvmeDevice {
         cap: u64,
         dev: &Arc<NvmeData>,
         pci_dev: &pci::Device<device::Core>,
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
     ) -> Result {
         let tagset = Self::setup_io_queues(dev, pci_dev, mq)?;
         pr_info!("setup_io_queues done\n");
@@ -342,7 +342,7 @@ impl NvmeDevice {
         pci_dev: &pci::Device<device::Core>,
     ) -> Result<(
         Arc<nvme_queue::NvmeQueue<nvme_mq::AdminQueueOperations>>,
-        mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
     )> {
         // pr_info!("Reset subsystem\n");
         // let support_ssr = (u32::from_le(dev.resources().unwrap.bar.read32(OFFSET_CAP)) >> 36) & 1;
@@ -389,7 +389,7 @@ impl NvmeDevice {
             },
             flags::GFP_KERNEL,
         )?;
-        let admin_mq = mq::RequestQueue::try_new(admin_tagset, ns)?;
+        let admin_mq = mq::OwnedRequestQueue::try_new(admin_tagset, ns)?;
 
         let mut aqa = (queue_depth - 1) as u32;
         aqa |= aqa << 16;
@@ -419,7 +419,7 @@ impl NvmeDevice {
     }
 
     fn submit_sync_command(
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
         mut cmd: NvmeCommand,
     ) -> Result<u32> {
         let op = if unsafe { cmd.common.opcode } & 1 != 0 {
@@ -443,7 +443,7 @@ impl NvmeDevice {
 
     fn set_queue_count(
         count: u32,
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
     ) -> Result<u32> {
         let q_count = (count - 1) | ((count - 1) << 16);
         let res = Self::set_features(mq, NVME_FEAT_NUM_QUEUES, q_count, 0)?;
@@ -451,7 +451,7 @@ impl NvmeDevice {
     }
 
     fn alloc_completion_queue<T: mq::Operations<RequestData = NvmeRequest> + Send>(
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
         queue: &nvme_queue::NvmeQueue<T>,
     ) -> Result<u32> {
         let mut flags = NVME_QUEUE_PHYS_CONTIG;
@@ -476,7 +476,7 @@ impl NvmeDevice {
     }
 
     fn alloc_submission_queue<T: mq::Operations<RequestData = NvmeRequest> + Send>(
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
         queue: &nvme_queue::NvmeQueue<T>,
     ) -> Result<u32> {
         Self::submit_sync_command(
@@ -496,7 +496,7 @@ impl NvmeDevice {
     }
 
     fn identify(
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
         nsid: u32,
         cns: u32,
         dma_addr: u64,
@@ -516,7 +516,7 @@ impl NvmeDevice {
     }
 
     fn get_features(
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
         fid: u32,
         nsid: u32,
         dma_addr: u64,
@@ -536,7 +536,7 @@ impl NvmeDevice {
     }
 
     fn set_features(
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
         fid: u32,
         dword11: u32,
         dma_addr: u64,
@@ -560,7 +560,7 @@ impl NvmeDevice {
 
     #[allow(dead_code)]
     fn dbbuf_set(
-        mq: &mq::RequestQueue<nvme_mq::AdminQueueOperations>,
+        mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
         dbs_dma_addr: u64,
         eis_dma_addr: u64,
     ) -> Result<u32> {
