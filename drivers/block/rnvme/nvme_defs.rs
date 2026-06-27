@@ -292,27 +292,42 @@ impl Default for NvmeCommand {
     }
 }
 
-pub(crate) const NVME_CC_ENABLE: u32 = 1 << 0;
-pub(crate) const NVME_CC_CSS_NVM: u32 = 0 << 4;
-pub(crate) const NVME_CC_MPS_SHIFT: u32 = 7;
-pub(crate) const NVME_CC_ARB_RR: u32 = 0 << 11;
-pub(crate) const NVME_CC_ARB_WRRU: u32 = 1 << 11;
-pub(crate) const NVME_CC_ARB_VS: u32 = 7 << 11;
-pub(crate) const NVME_CC_SHN_NONE: u32 = 0 << 14;
-pub(crate) const NVME_CC_SHN_NORMAL: u32 = 1 << 14;
-pub(crate) const NVME_CC_SHN_ABRUPT: u32 = 2 << 14;
-pub(crate) const NVME_CC_IOSQES: u32 = 6 << 16;
-pub(crate) const NVME_CC_IOCQES: u32 = 4 << 20;
-pub(crate) const NVME_CSTS_RDY: u32 = 1 << 0;
-pub(crate) const NVME_CSTS_CFS: u32 = 1 << 1;
-pub(crate) const NVME_CSTS_SHST_NORMAL: u32 = 0 << 2;
-pub(crate) const NVME_CSTS_SHST_OCCUR: u32 = 1 << 2;
-pub(crate) const NVME_CSTS_SHST_CMPLT: u32 = 2 << 2;
+// NVMe controller registers are little-endian (NVMe spec). Accesses go through
+// the `Io` MMIO path (readl/readq), which converts between little-endian and CPU
+// endianness, so no explicit byte-swapping is needed here.
+kernel::register! {
+    /// Controller Capabilities (CAP).
+    pub(crate) CAP(u64) @ 0x00 {
+        15:0    mqes;   // Maximum Queue Entries Supported (0-based).
+        35:32   dstrd;  // Doorbell Stride.
+        51:48   mpsmin; // Memory Page Size Minimum.
+    }
+
+    /// Controller Configuration (CC).
+    pub(crate) CC(u32) @ 0x14 {
+        0:0     enable => bool;
+        6:4     css;    // I/O Command Set Selected.
+        10:7    mps;    // Memory Page Size.
+        13:11   ams;    // Arbitration Mechanism Selected.
+        15:14   shn;    // Shutdown Notification.
+        19:16   iosqes; // I/O Submission Queue Entry Size.
+        23:20   iocqes; // I/O Completion Queue Entry Size.
+    }
+
+    /// Controller Status (CSTS).
+    pub(crate) CSTS(u32) @ 0x1c {
+        0:0     rdy => bool;
+        1:1     cfs => bool;
+        3:2     shst;   // Shutdown Status.
+    }
+
+    /// Admin Queue Attributes (AQA).
+    pub(crate) AQA(u32) @ 0x24 {
+        11:0    asqs;   // Admin Submission Queue Size (0-based).
+        27:16   acqs;   // Admin Completion Queue Size (0-based).
+    }
+}
 
 // TODO Prefix constants with something.
-pub(crate) const OFFSET_CAP: usize = 0x00;
-pub(crate) const OFFSET_CC: usize = 0x14;
-pub(crate) const OFFSET_CSTS: usize = 0x1c;
-pub(crate) const OFFSET_AQA: usize = 0x24;
 pub(crate) const OFFSET_ASQ: usize = 0x28;
 pub(crate) const OFFSET_ACQ: usize = 0x30;

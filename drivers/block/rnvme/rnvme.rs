@@ -21,39 +21,22 @@ use core::{
     cell::UnsafeCell,
     convert::TryInto,
     format_args,
-    sync::atomic::{
-        AtomicU16,
-        AtomicU32,
-        AtomicU64,
-        Ordering,
-    },
+    sync::atomic::{AtomicU16, AtomicU32, AtomicU64, Ordering},
 };
 
 use kernel::{
-    alloc::{
-        flags,
-        KBox,
-    },
+    alloc::{flags, KBox},
     bindings,
-    block::{
-        mq,
-        mq::gen_disk::GenDisk,
-    },
-    c_str,
-    device,
+    block::{mq, mq::gen_disk::GenDisk},
+    c_str, device,
     devres::Devres,
     dma,
     error::code::*,
     io::Io,
-    new_spinlock,
-    pci,
+    new_spinlock, pci,
     pci::Bar,
     prelude::*,
-    sync::{
-        aref::ARef,
-        Arc,
-        SpinLock,
-    },
+    sync::{aref::ARef, Arc, SpinLock},
     types::AtomicOptionalBoxedPtr,
 };
 
@@ -176,12 +159,11 @@ impl Default for MappingData {
     }
 }
 
-fn calculate_max_blocks(cap: u64, mdts: u8) -> Option<u32> {
+fn calculate_max_blocks(mps_min: u32, mdts: u8) -> Option<u32> {
     if mdts == 0 {
         return None;
     }
 
-    let mps_min = ((cap >> 48) & 0xf) as u32;
     let ps_in_blocks = 1u32.checked_shl(mps_min.checked_add(3)?)?;
     ps_in_blocks.checked_mul(1u32.checked_shl(mdts.into())?)
 }
@@ -239,8 +221,7 @@ impl NvmeDevice {
         // TODO: Check what else needs to happen from C side.
 
         // Initialise the queue depth.
-        let max_depth =
-            (u64::from_le(dev.bar.try_access().unwrap().read64(OFFSET_CAP)) & 0xffff) + 1;
+        let max_depth = dev.bar.try_access().unwrap().read(CAP).mqes().get() + 1;
         let q_depth = core::cmp::min(max_depth, 1024).try_into()?;
 
         pr_info!("HW queue depth: {}\n", q_depth);
@@ -305,7 +286,7 @@ impl NvmeDevice {
     }
 
     fn dev_add(
-        cap: u64,
+        cap: CAP,
         dev: &Arc<NvmeData>,
         pci_dev: &pci::Device<device::Core<'_>>,
         mq: &mq::OwnedRequestQueue<nvme_mq::AdminQueueOperations>,
@@ -329,11 +310,12 @@ impl NvmeDevice {
             mdts = ctrl_id.mdts;
         }
 
-        let max_sectors = if let Some(blocks) = calculate_max_blocks(cap, mdts) {
-            core::cmp::min((nvme_driver_defs::NVME_MAX_KB_SZ << 1) as u32, blocks)
-        } else {
-            (nvme_driver_defs::NVME_MAX_KB_SZ << 1) as u32
-        };
+        let max_sectors =
+            if let Some(blocks) = calculate_max_blocks(cap.mpsmin().get() as u32, mdts) {
+                core::cmp::min((nvme_driver_defs::NVME_MAX_KB_SZ << 1) as u32, blocks)
+            } else {
+                (nvme_driver_defs::NVME_MAX_KB_SZ << 1) as u32
+            };
         let zero_rt = NvmeLbaRangeType::default();
         let mut disks = KVec::new();
         for i in 1..=number_of_namespaces {
@@ -365,7 +347,7 @@ impl NvmeDevice {
         pr_info!("Waiting for controller ready\n");
         {
             let bar = dev.bar.try_access().unwrap();
-            while u32::from_le(bar.read32(OFFSET_CSTS)) & NVME_CSTS_RDY == 0 {
+            while !bar.read(CSTS).rdy() {
                 unsafe { bindings::mdelay(100) };
                 // TODO: Add check for fatal signal pending.
                 // TODO: Set timeout.
@@ -378,7 +360,7 @@ impl NvmeDevice {
         pr_info!("Waiting for controller idle\n");
         {
             let bar = dev.bar.try_access().unwrap();
-            while u32::from_le(bar.read32(OFFSET_CSTS)) & NVME_CSTS_RDY != 0 {
+            while bar.read(CSTS).rdy() {
                 unsafe { bindings::mdelay(100) };
                 // TODO: Add check for fatal signal pending.
                 // TODO: Set timeout.
@@ -404,7 +386,7 @@ impl NvmeDevice {
 
         pr_info!("Disable (reset) controller\n");
         {
-            dev.bar.try_access().unwrap().write32(0, OFFSET_CC);
+            dev.bar.try_access().unwrap().write(CC, CC::zeroed());
         }
         Self::wait_idle(dev);
 
@@ -441,23 +423,28 @@ impl NvmeDevice {
         )?;
         let admin_mq = mq::OwnedRequestQueue::try_new(admin_tagset, ns)?;
 
-        let mut aqa = (queue_depth - 1) as u32;
-        aqa |= aqa << 16;
+        let asqs_acqs = (queue_depth - 1) as u32;
 
-        let mut ctrl_config = NVME_CC_ENABLE | NVME_CC_CSS_NVM;
-        ctrl_config |= (kernel::bindings::PAGE_SHIFT - 12) << NVME_CC_MPS_SHIFT;
-        ctrl_config |= NVME_CC_ARB_RR | NVME_CC_SHN_NONE;
-        ctrl_config |= NVME_CC_IOSQES | NVME_CC_IOCQES;
+        let ctrl_config = CC::zeroed()
+            .with_enable(true)
+            .try_with_mps((kernel::bindings::PAGE_SHIFT - 12) as u32)?
+            .with_const_iosqes::<6>()
+            .with_const_iocqes::<4>();
 
         pr_info!("About to wait for nvme readiness\n");
         {
             let bar = dev.bar.try_access().unwrap();
 
             // TODO: All writes should support endian conversion
-            bar.write32(aqa, OFFSET_AQA);
+            bar.write(
+                AQA,
+                AQA::zeroed()
+                    .try_with_asqs(asqs_acqs)?
+                    .try_with_acqs(asqs_acqs)?,
+            );
             bar.write64(admin_queue.sq.dma_handle(), OFFSET_ASQ);
             bar.write64(admin_queue.cq.dma_handle(), OFFSET_ACQ);
-            bar.write32(ctrl_config, OFFSET_CC);
+            bar.write(CC, ctrl_config);
         }
         Self::wait_ready(dev);
 
@@ -660,7 +647,7 @@ impl pci::Driver for NvmeDevice {
 
         // 2. Disable controller — stops all DMA and interrupt generation.
         if let Some(bar) = this.data.bar.try_access() {
-            bar.write32(0, OFFSET_CC);
+            bar.write(CC, CC::zeroed());
         }
 
         // 3. Wait for controller idle (CSTS.RDY = 0).
@@ -769,9 +756,9 @@ impl pci::Driver for NvmeDevice {
                 flags::GFP_KERNEL,
             )?;
 
-            let cap = u64::from_le(data.bar.try_access().unwrap().read64(OFFSET_CAP));
+            let cap = data.bar.try_access().unwrap().read(CAP);
             // SAFETY: We are the only user of `data` at this point (just created, not shared yet).
-            unsafe { *data.db_stride.get() = 1 << (((cap >> 32) & 0xf) + 2) };
+            unsafe { *data.db_stride.get() = 1 << (cap.dstrd().get() + 2) };
 
             // TODO: Handle initialization on a workqueue
             pr_info!("Setting up admin queue");
