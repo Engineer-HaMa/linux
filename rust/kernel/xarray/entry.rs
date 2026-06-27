@@ -373,18 +373,18 @@ where
     ///
     /// # Ok::<(), kernel::error::Error>(())
     /// ```
-    pub fn swap<U>(&mut self, other: &mut U)
+    pub fn swap<U: 'b>(&mut self, other: &mut U)
     where
-        T: for<'c> ForeignOwnable<Borrowed<'c> = &'c U, BorrowedMut<'c> = &'c mut U>,
+        T: ForeignOwnable<Borrowed<'b> = &'b U, BorrowedMut<'b> = &'b mut U>,
     {
         use core::ops::DerefMut;
         core::mem::swap(self.deref_mut(), other);
     }
 }
 
-impl<T, U> core::ops::Deref for OccupiedEntry<'_, '_, T>
+impl<'a, 'b, T, U: 'b> core::ops::Deref for OccupiedEntry<'a, 'b, T>
 where
-    T: for<'a> ForeignOwnable<Borrowed<'a> = &'a U, BorrowedMut<'a> = &'a mut U>,
+    T: ForeignOwnable<Borrowed<'b> = &'b U>,
 {
     type Target = U;
 
@@ -394,9 +394,9 @@ where
     }
 }
 
-impl<T, U> core::ops::DerefMut for OccupiedEntry<'_, '_, T>
+impl<'a, 'b, T, U: 'b> core::ops::DerefMut for OccupiedEntry<'a, 'b, T>
 where
-    T: for<'a> ForeignOwnable<Borrowed<'a> = &'a U, BorrowedMut<'a> = &'a mut U>,
+    T: ForeignOwnable<Borrowed<'b> = &'b U, BorrowedMut<'b> = &'b mut U>,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         // SAFETY: `ptr` came from `T::into_foreign`.
