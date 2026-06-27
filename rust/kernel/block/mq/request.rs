@@ -117,7 +117,7 @@ impl<T: Operations> IdleRequest<T> {
 impl<T: Operations> Ownable for IdleRequest<T> {
     // The `release` implementation leaks the `IdleRequest`, which is a valid state for a
     // [`Request`] with refcount 0.
-    unsafe fn release(&mut self) {}
+    unsafe fn release(_this: NonNull<Self>) {}
 }
 
 impl<T: Operations> Deref for IdleRequest<T> {
@@ -537,10 +537,10 @@ impl<T: Operations> Owned<Request<T>> {
 impl<T: Operations> Ownable for Request<T> {
     // The `release` implementation frees the underlying request according to the reference
     // counting scheme for `Request`.
-    unsafe fn release(&mut self) {
-        // SAFETY: The safety requirements of this function guarantee that `self`
+    unsafe fn release(this: NonNull<Self>) {
+        // SAFETY: The safety requirements of this function guarantee that `this`
         // is valid for read.
-        let wrapper_ptr = unsafe { Self::wrapper_ptr(self).as_ptr() };
+        let wrapper_ptr = unsafe { Self::wrapper_ptr(this.as_ptr()).as_ptr() };
         // SAFETY: The type invariant of `Request` guarantees that the private
         // data area is initialized and valid.
         let refcount = unsafe { &*RequestDataWrapper::refcount_ptr(wrapper_ptr) };
@@ -613,7 +613,7 @@ where
     T::RequestData: HasHrTimer<T::RequestData>,
 {
     fn cancel(&mut self) -> bool {
-        let request_data_ptr = &self.inner.wrapper_ref().data as *const T::RequestData;
+        let request_data_ptr = core::ptr::from_ref(&self.inner.wrapper_ref().data);
 
         // SAFETY: As we obtained `self_ptr` from a valid reference above, it
         // must point to a valid `U`.
@@ -676,7 +676,7 @@ where
     type TimerHandle = RequestTimerHandle<T>;
 
     fn start(self, expires: <Self::TimerMode as HrTimerMode>::Expires) -> RequestTimerHandle<T> {
-        let pdu_ptr = self.data_ref() as *const T::RequestData;
+        let pdu_ptr = core::ptr::from_ref(self.data_ref());
 
         // SAFETY: `pdu_pointer` is coerced from a live reference to a `T` and this points to a
         // valid `T`. The reference is valid until `T` is dropped, and the timer will be canceled
