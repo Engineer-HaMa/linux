@@ -124,6 +124,7 @@
 //! # Ok::<(), kernel::error::Error>(())
 //! ```
 
+mod dma;
 mod feature;
 pub mod gen_disk;
 mod operations;
@@ -132,6 +133,11 @@ mod request_list;
 mod request_queue;
 pub mod tag_set;
 
+pub use dma::{
+    DmaSegment,
+    RequestDmaMapping,
+    Segments, //
+};
 pub use feature::{
     Feature,
     Features, //
